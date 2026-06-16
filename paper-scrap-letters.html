@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paper Scrap Letters</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 28%, #3a2616, #1c1109 75%);
+    font-family: "Anton", sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---- Control bar ---- */
+  .controls {
+    display: flex;
+    gap: 10px;
+    padding: 18px 22px;
+    align-items: center;
+    z-index: 10;
+    position: relative;
+  }
+
+  #text-input {
+    flex: 1;
+    max-width: 520px;
+    padding: 12px 16px;
+    font-size: 16px;
+    font-family: system-ui, sans-serif;
+    border: none;
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: #fff;
+    outline: none;
+    box-shadow: inset 0 0 0 1px #333;
+  }
+  #text-input:focus { box-shadow: inset 0 0 0 2px #666; }
+
+  .controls button {
+    padding: 12px 26px;
+    font-size: 15px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-family: "Anton", sans-serif;
+    border: none;
+    border-radius: 8px;
+    background: #fff;
+    color: #000;
+    cursor: pointer;
+    transition: transform .1s ease, background .2s ease;
+  }
+  .controls button:hover { background: #e3e3e3; }
+  .controls button:active { transform: scale(.94); }
+  .controls button.out { background: #2a2a2a; color: #fff; box-shadow: inset 0 0 0 1px #444; }
+  .controls button.out:hover { background: #383838; }
+
+  /* ---- Stage with 3D perspective ---- */
+  .stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1100px;
+    perspective-origin: 50% 40%;
+  }
+
+  .sentence {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    row-gap: 16px;
+    column-gap: 0;
+    max-width: 90vw;
+    transform-style: preserve-3d;
+  }
+
+  .word {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transform-style: preserve-3d;
+  }
+
+  .space { width: 26px; }
+
+  /* ---- Individual paper scrap ---- */
+  .scrap {
+    --r: 0deg;
+    --fs: 60px;
+    --px: 0.18em;
+    --py: 0.12em;
+    position: relative;
+    display: inline-block;
+    background: #fff;
+    color: #111;
+    font-size: var(--fs);
+    line-height: 1;
+    padding: var(--py) var(--px);
+    transform: rotate(var(--r));
+    filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55));
+    /* torn / cut paper edge — randomized per scrap in JS */
+    opacity: 0;
+    transform-style: preserve-3d;
+    will-change: transform, opacity;
+  }
+
+  /* subtle paper texture / shading */
+  .scrap::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(135deg, rgba(0,0,0,0.05), rgba(0,0,0,0) 40%),
+      radial-gradient(circle at 70% 80%, rgba(0,0,0,0.07), rgba(0,0,0,0) 55%);
+    pointer-events: none;
+  }
+
+  /* ===== SLAM IN ===== */
+  .scrap.in {
+    animation: slam .55s cubic-bezier(.2,1.4,.35,1) forwards;
+    animation-delay: var(--d, 0s);
+  }
+  @keyframes slam {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, -40px, 650px) rotateX(-55deg) rotate(var(--r)) scale(2.4);
+      filter: drop-shadow(10px 16px 14px rgba(0,0,0,0.5)) blur(3px);
+    }
+    55% { opacity: 1; filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55)) blur(0); }
+    70% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotateX(8deg) rotate(var(--r)) scale(.9);
+    }
+    85% {
+      transform: translate3d(0, 0, 0) rotateX(-3deg) rotate(var(--r)) scale(1.06);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotateX(0deg) rotate(var(--r)) scale(1);
+      filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55)) blur(0);
+    }
+  }
+
+  /* ===== FLOAT OUT ===== */
+  .scrap.out {
+    animation: floatout .5s cubic-bezier(.4,0,.2,1) forwards;
+    animation-delay: var(--d, 0s);
+  }
+  @keyframes floatout {
+    0%   { opacity: 1; transform: translate3d(0,0,0) rotate(var(--r)) scale(1); filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55)); }
+    100% {
+      opacity: 0;
+      transform: translate3d(var(--fx, 0px), -180px, 350px) rotate(calc(var(--r) + var(--fr, 25deg))) scale(1.15);
+      filter: drop-shadow(2px 4px 10px rgba(0,0,0,0.4)) blur(2px);
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div class="controls">
+    <input id="text-input" type="text" placeholder="Type something…" value="GET READY TO SCREAM" maxlength="60" autocomplete="off" />
+    <button id="btn-in">In</button>
+    <button id="btn-out" class="out">Out</button>
+  </div>
+
+  <div class="stage">
+    <div class="sentence" id="sentence"></div>
+  </div>
+
+<script>
+  const input = document.getElementById("text-input");
+  const sentence = document.getElementById("sentence");
+  const btnIn = document.getElementById("btn-in");
+  const btnOut = document.getElementById("btn-out");
+
+  const rand = (min, max) => Math.random() * (max - min) + min;
+
+  // Near-rectangle: just four corners nudged slightly, so edges stay straight.
+  function makeClip() {
+    const j = (lo, hi) => rand(lo, hi).toFixed(1);
+    return `polygon(
+      ${j(0,4)}% ${j(0,5)}%,
+      ${j(96,100)}% ${j(0,4)}%,
+      ${j(96,100)}% ${j(95,100)}%,
+      ${j(0,4)}% ${j(96,100)}%
+    )`;
+  }
+
+  function makeScrap(ch) {
+    const el = document.createElement("span");
+    el.className = "scrap";
+    el.textContent = ch;
+    // mostly straight, just a touch of tilt
+    el.style.setProperty("--r", rand(-3.5, 3.5).toFixed(1) + "deg");
+    // varied scrap sizes
+    el.style.setProperty("--fs", rand(60, 80).toFixed(0) + "px");
+    // random padding => random side lengths around the letter
+    el.style.setProperty("--px", rand(0.10, 0.34).toFixed(2) + "em");
+    el.style.setProperty("--py", rand(0.06, 0.26).toFixed(2) + "em");
+    el.style.clipPath = makeClip();
+    // randomized exit drift, stored per-scrap so "Out" feels organic
+    el.dataset.fx = rand(-90, 90).toFixed(0) + "px";
+    el.dataset.fr = rand(-45, 45).toFixed(0) + "deg";
+    return el;
+  }
+
+  // Build the scraps (hidden until "In"), grouped by word so words never split
+  function buildScraps() {
+    sentence.innerHTML = "";
+    const words = (input.value || "").split(" ");
+    words.forEach((word, wi) => {
+      if (word.length) {
+        const w = document.createElement("span");
+        w.className = "word";
+        for (const ch of word) w.appendChild(makeScrap(ch));
+        sentence.appendChild(w);
+      }
+      if (wi < words.length - 1) {
+        const sp = document.createElement("span");
+        sp.className = "space";
+        sentence.appendChild(sp);
+      }
+    });
+  }
+
+  function clearAnim(el) {
+    el.classList.remove("in", "out");
+    void el.offsetWidth; // force reflow so re-adding the class restarts animation
+  }
+
+  function slamIn() {
+    const scraps = sentence.querySelectorAll(".scrap");
+    scraps.forEach((el, i) => {
+      clearAnim(el);
+      el.style.setProperty("--d", (i * 0.05).toFixed(2) + "s");
+      el.classList.add("in");
+    });
+  }
+
+  function floatOut() {
+    const scraps = sentence.querySelectorAll(".scrap");
+    scraps.forEach((el) => {
+      // only animate out the ones currently visible
+      el.style.setProperty("--fx", el.dataset.fx);
+      el.style.setProperty("--fr", el.dataset.fr);
+      clearAnim(el);
+      el.style.setProperty("--d", rand(0, 0.12).toFixed(2) + "s");
+      el.classList.add("out");
+    });
+  }
+
+  btnIn.addEventListener("click", () => { buildScraps(); requestAnimationFrame(slamIn); });
+  btnOut.addEventListener("click", floatOut);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { buildScraps(); requestAnimationFrame(slamIn); }
+  });
+
+  // initial render
+  buildScraps();
+  window.addEventListener("load", () => requestAnimationFrame(slamIn));
+</script>
+</body>
+</html>

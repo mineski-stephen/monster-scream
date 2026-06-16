@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seamless Loop Player</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0d0f;
+      --surface:  #151518;
+      --border:   #242428;
+      --accent:   #7c6af7;
+      --accent2:  #c084fc;
+      --text:     #e8e8ed;
+      --muted:    #5a5a6a;
+      --bar-idle: #2a2a35;
+      --yellow:   #f5c518;
+      --riser:    #38bdf8;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(124,106,247,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .card {
+      width: min(480px, 92vw);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 36px 32px;
+      box-shadow: 0 0 0 1px rgba(124,106,247,0.08), 0 24px 64px rgba(0,0,0,0.6);
+    }
+
+    .eyebrow {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .eyebrow::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: dot-pulse 2s ease-in-out infinite;
+    }
+    @keyframes dot-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.3; transform: scale(0.7); }
+    }
+
+    .track-name {
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, var(--text) 60%, var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .track-file {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    /* ── Visualizer ── */
+    .visualizer {
+      height: 64px;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .bar {
+      flex: 1;
+      background: var(--bar-idle);
+      border-radius: 2px 2px 0 0;
+      min-height: 4px;
+    }
+
+    /* ── Progress bar ── */
+    .progress-wrap {
+      margin-bottom: 8px;
+      position: relative;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      cursor: pointer;
+      overflow: hidden; /* keep fill clipped */
+    }
+    .progress-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      pointer-events: none;
+      transition: none; /* updated via rAF, no CSS transition needed */
+    }
+    /* subtle scrub hover — widen the hit target */
+    .progress-wrap::before {
+      content: '';
+      position: absolute;
+      inset: -6px 0;
+    }
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .time-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .btn-play {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(124,106,247,0.35);
+    }
+    .btn-play:hover  { transform: scale(1.06); box-shadow: 0 6px 28px rgba(124,106,247,0.5); }
+    .btn-play:active { transform: scale(0.97); }
+
+    .meta { flex: 1; }
+    .meta-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .meta-value { font-family: 'Space Mono', monospace; font-size: 13px; color: var(--text); }
+
+    /* ── Volume ── */
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .volume-icon { color: var(--muted); flex-shrink: 0; }
+    input[type=range] {
+      -webkit-appearance: none;
+      flex: 1; height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(124,106,247,0.5);
+      transition: transform 0.15s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+
+    /* ── Metronome ── */
+    .metronome {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(124,106,247,0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    /* Pulsing beat indicator */
+    .beat-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--bar-idle);
+      flex-shrink: 0;
+      transition: background 0.05s, transform 0.05s, box-shadow 0.05s;
+    }
+    .beat-dot.flash {
+      background: var(--accent2);
+      transform: scale(1.4);
+      box-shadow: 0 0 14px rgba(192,132,252,0.8);
+    }
+    .metro-main { flex: 1; }
+    .metro-top {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .metro-label {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .bpm-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    .bpm-unit {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    /* BPM stepper buttons */
+    .bpm-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .bpm-step {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: border-color 0.15s, color 0.15s;
+      line-height: 1;
+    }
+    .bpm-step:hover { border-color: var(--accent); color: var(--accent); }
+    .bpm-step:active { transform: scale(0.92); }
+    .bpm-slider { flex: 1; }
+
+    /* Metronome on/off toggle */
+    .metro-toggle {
+      position: relative;
+      width: 44px; height: 24px;
+      border-radius: 12px;
+      border: none;
+      background: var(--border);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.2s;
+      padding: 0;
+    }
+    .metro-toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: transform 0.2s, background 0.2s;
+    }
+    .metro-toggle.on { background: rgba(124,106,247,0.4); }
+    .metro-toggle.on::after {
+      transform: translateX(20px);
+      background: var(--accent2);
+    }
+    .metro-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── FX panel (riser + low-pass) ── */
+    .fx {
+      margin-top: 12px;
+      padding: 16px;
+      background: rgba(124,106,247,0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .fx-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .fx-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 14px 0;
+    }
+    .fx-main { flex: 1; }
+    .fx-label {
+      font-size: 12px;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .fx-sub {
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 4px;
+    }
+    .fx-icon { color: var(--muted); flex-shrink: 0; }
+    .fx-slider-wrap { flex: 1; }
+    .fx-label-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .fx-readout {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+    }
+
+    /* ── Measure grid ── */
+    .grid-wrap { margin-top: 24px; }
+    .grid-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+    .grid-title { font-size: 11px; color: var(--muted); }
+    .grid-count {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+      gap: 6px;
+      max-height: 224px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    /* thin scrollbar for the grid */
+    .grid::-webkit-scrollbar { width: 8px; }
+    .grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .block {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .block:hover { border-color: rgba(124,106,247,0.5); color: var(--text); }
+    .block:active { transform: scale(0.96); }
+    .block .num  { position: relative; z-index: 2; }
+    /* progress "loading" fill */
+    .block .fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: linear-gradient(180deg, rgba(124,106,247,0.40), rgba(192,132,252,0.28));
+      z-index: 1;
+    }
+    .block.playing { border-color: var(--accent); color: var(--text); }
+    /* Marked (yellow) measures — keeps its tint through playing/idle; the queued
+       pulse animation still overrides the border while a yellow block is queued. */
+    .block.yellow {
+      border-color: rgba(245,197,24,0.5);
+      color: var(--yellow);
+    }
+    .block.yellow .fill {
+      background: linear-gradient(180deg, rgba(245,197,24,0.40), rgba(245,197,24,0.22));
+    }
+    .block.yellow:hover { border-color: var(--yellow); color: var(--yellow); }
+    /* riser-attached marker */
+    .block.has-riser::before {
+      content: '↑';
+      position: absolute;
+      top: 1px; left: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--riser);
+      z-index: 3;
+      text-shadow: 0 0 6px rgba(56,189,248,0.6);
+    }
+    .block.queued  {
+      color: var(--text);
+      animation: queued-pulse 1s ease-in-out infinite;
+    }
+    @keyframes queued-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(192,132,252,0); border-color: var(--accent2); }
+      50%       { box-shadow: 0 0 0 3px rgba(192,132,252,0.20); border-color: var(--accent2); }
+    }
+    .block .tag {
+      position: absolute;
+      top: 3px; right: 3px;
+      min-width: 13px; height: 13px;
+      padding: 0 2px;
+      border-radius: 7px;
+      background: var(--accent2);
+      color: #1a1020;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 13px;
+      text-align: center;
+      z-index: 3;
+      opacity: 0;
+      transform: scale(0.5);
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .block.queued .tag { opacity: 1; transform: scale(1); }
+
+    .status-bar {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-text { font-size: 11px; color: var(--muted); }
+    .loop-badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      background: rgba(124,106,247,0.12);
+      border: 1px solid rgba(124,106,247,0.25);
+      border-radius: 4px;
+      padding: 3px 8px;
+    }
+
+    .error-msg {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 14px;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #f87171;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="eyebrow">Seamless Loop Player</div>
+  <div class="track-name">full.ogg</div>
+  <div class="track-file">Web Audio API · Zero-gap looping</div>
+
+  <div class="visualizer" id="visualizer"></div>
+
+  <!-- Progress bar -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="time-row">
+    <span class="time-label" id="timeCurrent">0:00</span>
+    <span class="time-label" id="timeTotal">–:––</span>
+  </div>
+
+  <!-- Measure grid (4-beat blocks) -->
+  <div class="grid-wrap">
+    <div class="grid-head">
+      <span class="grid-title">Measures · click to queue (max 4) · right-click to remove</span>
+      <span class="grid-count" id="gridCount">–</span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-play" id="playBtn" aria-label="Play">
+      <svg id="iconPlay" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+      <svg id="iconPause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+      </svg>
+    </button>
+    <div class="meta">
+      <div class="meta-label">Status</div>
+      <div class="meta-value" id="statusText">Ready</div>
+    </div>
+    <div class="meta" style="text-align:right">
+      <div class="meta-label">Loop #</div>
+      <div class="meta-value" id="loopCount">0</div>
+    </div>
+  </div>
+
+  <div class="volume-row">
+    <svg class="volume-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+    </svg>
+    <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+  </div>
+
+  <!-- Metronome -->
+  <div class="metronome">
+    <div class="beat-dot" id="beatDot"></div>
+    <div class="metro-main">
+      <div class="metro-top">
+        <span class="metro-label">Metronome</span>
+        <span class="bpm-value" id="bpmValue">100</span>
+        <span class="bpm-unit">BPM</span>
+      </div>
+      <div class="bpm-controls">
+        <button class="bpm-step" id="bpmDown" aria-label="Decrease BPM">–</button>
+        <input type="range" id="bpmSlider" class="bpm-slider" min="40" max="240" step="1" value="100" aria-label="Tempo">
+        <button class="bpm-step" id="bpmUp" aria-label="Increase BPM">+</button>
+      </div>
+    </div>
+    <button class="metro-toggle" id="metroToggle" role="switch" aria-checked="false" aria-label="Toggle metronome"></button>
+  </div>
+
+  <!-- FX: riser + low-pass filter -->
+  <div class="fx">
+    <div class="fx-row">
+      <div class="fx-main">
+        <div class="fx-label">Riser <span class="fx-sub" id="riserHint">arm, then queue a block</span></div>
+      </div>
+      <button class="metro-toggle" id="riserToggle" role="switch" aria-checked="false" aria-label="Arm riser"></button>
+    </div>
+    <div class="fx-divider"></div>
+    <div class="fx-row">
+      <svg class="fx-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7h6l3 10 3-10h6"/>
+      </svg>
+      <div class="fx-slider-wrap">
+        <div class="fx-label-row">
+          <span class="fx-label">Low-pass · 300 Hz</span>
+          <span class="fx-readout" id="lowpassVal">0%</span>
+        </div>
+        <input type="range" id="lowpass" min="0" max="100" step="1" value="0" aria-label="Low-pass amount">
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span class="status-text" id="techStatus">Waiting for interaction…</span>
+    <span class="loop-badge">∞ SEAMLESS</span>
+  </div>
+  <div class="error-msg" id="errorMsg"></div>
+</div>
+
+<script>
+// ── Audio file paths ───────────────────────────────────────────────────────────
+const AUDIO_LOOP  = 'audio/full.ogg';
+const AUDIO_RISER = 'audio/riser.ogg';
+
+// ── Visualizer bars ────────────────────────────────────────────────────────────
+const vizEl = document.getElementById('visualizer');
+const BAR_COUNT = 48;
+const bars = [];
+for (let i = 0; i < BAR_COUNT; i++) {
+  const b = document.createElement('div');
+  b.className = 'bar';
+  b.style.height = (8 + Math.random() * 40) + 'px';
+  vizEl.appendChild(b);
+  bars.push(b);
+}
+
+// ── DOM refs ───────────────────────────────────────────────────────────────────
+const playBtn       = document.getElementById('playBtn');
+const iconPlay      = document.getElementById('iconPlay');
+const iconPause     = document.getElementById('iconPause');
+const statusText    = document.getElementById('statusText');
+const loopCountEl   = document.getElementById('loopCount');
+const techStatus    = document.getElementById('techStatus');
+const volumeEl      = document.getElementById('volume');
+const errorMsg      = document.getElementById('errorMsg');
+const progressFill  = document.getElementById('progressFill');
+const progressWrap  = document.getElementById('progressWrap');
+const timeCurrent   = document.getElementById('timeCurrent');
+const timeTotal     = document.getElementById('timeTotal');
+const gridEl        = document.getElementById('grid');
+const gridCountEl   = document.getElementById('gridCount');
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let actx        = null;
+let gainNode    = null;
+let filterNode  = null;   // master low-pass
+let analyser    = null;
+let audioBuffer = null;
+let sourceNode  = null;   // the single looping BufferSourceNode
+let isPlaying   = false;
+let loopCount   = 0;
+let rafId       = null;
+
+// Riser layer
+let riserBuffer = null;   // decoded riser.ogg (null if unavailable)
+let riserArmed  = false;  // when on, queued blocks get a riser attached
+const riserSet  = new Set(); // measures (0-based) that have a riser attached
+
+// DOM refs for the new controls (defined in markup below)
+const riserToggle = document.getElementById('riserToggle');
+const riserHint   = document.getElementById('riserHint');
+const lowpassEl   = document.getElementById('lowpass');
+const lowpassVal  = document.getElementById('lowpassVal');
+
+// When play started: actx.currentTime value and the offset into the buffer
+let playStartCtxTime  = 0;
+let playStartOffset   = 0;   // seconds into the buffer we started from (0 normally)
+let pauseOffset       = 0;   // where we were in the buffer when paused
+
+// ── Measure grid / quantized launch state ──────────────────────────────────────
+// The loop is divided into 4-beat measures based on the AUDIO's tempo (fixed at
+// 100 BPM — independent of the metronome's adjustable BPM).
+const AUDIO_BPM        = 100;
+const BEATS_PER_MEASURE = 4;
+const measureLength    = (60 / AUDIO_BPM) * BEATS_PER_MEASURE;  // 2.4s
+let   numMeasures      = 1;
+const blockEls         = [];     // [{ el, fill, tag }]
+let   lastCurrentMeasure = -1;   // which block is currently highlighted
+const MAX_QUEUE        = 4;      // queue holds at most 4 waiting measures
+const MEASURE_LOOKAHEAD = 0.1;   // schedule the next swap when within 100ms of a boundary
+let   queue            = [];     // FIFO of measures waiting to play, in click order
+let   pendingSwap      = null;   // { boundaryTime, offset, source, targetMeasure }
+let   prevPos          = 0;      // for wrap-based loop counting
+let   seekApplied      = false;  // suppress false loop count after a discontinuity
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function fmt(s) {
+  s = Math.max(0, s);
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
+}
+
+function showError(msg) {
+  errorMsg.style.display = 'block';
+  errorMsg.textContent   = '⚠ ' + msg;
+  statusText.textContent = 'Error';
+  techStatus.textContent = 'Check the browser console for details.';
+}
+
+// Map the low-pass slider (0–100%) to a cutoff frequency. 0% = fully open
+// (~20 kHz, inaudible effect); 100% = 300 Hz. Exponential so the sweep is even.
+function filterFreqFromPct(pct) {
+  const t = Math.max(0, Math.min(1, pct / 100));
+  if (t <= 0) return 20000;
+  return 300 * Math.pow(20000 / 300, 1 - t);
+}
+
+// Load the riser layer. Failure just disables the feature (no riser.ogg).
+async function loadRiser() {
+  try {
+    const res = await fetch(AUDIO_RISER);
+    if (!res.ok) throw new Error('riser.ogg not found');
+    riserBuffer = await actx.decodeAudioData(await res.arrayBuffer());
+    riserHint.textContent = 'arm, then queue a block';
+  } catch (e) {
+    riserBuffer = null;
+    riserArmed = false;
+    riserToggle.classList.remove('on');
+    riserToggle.setAttribute('aria-checked', 'false');
+    riserToggle.disabled = true;
+    riserHint.textContent = 'riser.ogg not found';
+  }
+}
+
+// Play the riser one-shot at AudioContext time `when`, through the master chain
+// (so volume + low-pass apply). Returns the source so it can be cancelled.
+function playRiserAt(when) {
+  if (!riserBuffer) return null;
+  const r = actx.createBufferSource();
+  r.buffer = riserBuffer;
+  r.connect(gainNode);
+  r.start(when);
+  return r;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+async function initAudio() {
+  if (actx) return true;
+  try {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+
+    gainNode = actx.createGain();
+    gainNode.gain.value = parseFloat(volumeEl.value);
+
+    // Low-pass filter in the master chain (before the analyser, so the
+    // visualizer reacts to it too). Starts fully open = no audible effect.
+    filterNode = actx.createBiquadFilter();
+    filterNode.type = 'lowpass';
+    filterNode.frequency.value = filterFreqFromPct(parseFloat(lowpassEl.value));
+    filterNode.Q.value = 0.7;
+
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 128;
+
+    gainNode.connect(filterNode);
+    filterNode.connect(analyser);
+    analyser.connect(actx.destination);
+
+    techStatus.textContent = 'Loading ' + AUDIO_LOOP + '…';
+    statusText.textContent = 'Loading…';
+
+    const res = await fetch(AUDIO_LOOP);
+    if (!res.ok) throw new Error(`HTTP ${res.status} — make sure ${AUDIO_LOOP} is in the same folder as this HTML file.`);
+
+    const arrayBuf = await res.arrayBuffer();
+    // Ogg Vorbis is gapless by design — the headers store exact sample counts,
+    // so the decoded buffer has no encoder padding. No trimming needed; the
+    // loop point is exact by construction.
+    audioBuffer = await actx.decodeAudioData(arrayBuf);
+
+    // Divide the loop into 4-beat measures and build the grid.
+    numMeasures = Math.max(1, Math.round(audioBuffer.duration / measureLength));
+    buildGrid();
+
+    // Load the riser layer separately — a missing riser.ogg shouldn't break the app.
+    loadRiser();
+
+    timeTotal.textContent  = fmt(audioBuffer.duration);
+    techStatus.textContent = `Loaded · ${audioBuffer.duration.toFixed(2)}s · ${audioBuffer.sampleRate} Hz · ${numMeasures} measures`;
+    statusText.textContent = 'Ready';
+    return true;
+  } catch (e) {
+    showError(e.message || String(e));
+    return false;
+  }
+}
+
+// ── Core: create a looping source ─────────────────────────────────────────────
+// AudioBufferSourceNode.loop = true is sample-accurate per the Web Audio spec.
+// The browser schedules the loop at the exact end sample with zero gap.
+function startSource(offset) {
+  const src = actx.createBufferSource();
+  src.buffer = audioBuffer;
+  src.loop   = true;           // ← the real fix: engine-level seamless loop
+  src.connect(gainNode);
+  src.start(0, offset);        // start immediately, from `offset` seconds in
+
+  playStartCtxTime = actx.currentTime;
+  playStartOffset  = offset;
+
+  // Count loops by watching when position wraps
+  sourceNode = src;
+}
+
+// ── Play / Pause ───────────────────────────────────────────────────────────────
+function beginPlayback(offset, withRiser) {
+  isPlaying = true;
+  iconPlay.style.display  = 'none';
+  iconPause.style.display = '';
+  statusText.textContent  = 'Playing';
+
+  startSource(offset);
+  if (withRiser) playRiserAt(actx.currentTime);   // riser alongside the block start
+  seekApplied = true;
+  prevPos = offset % audioBuffer.duration;
+  reanchorMetro();   // lock the metronome onto the loop's beat grid
+  drawFrame();
+}
+
+async function togglePlay() {
+  const ok = await initAudio();
+  if (!ok) return;
+  if (actx.state === 'suspended') await actx.resume();
+
+  if (!isPlaying) {
+    beginPlayback(pauseOffset);
+  } else {
+    pauseOffset = currentPosition();
+
+    isPlaying = false;
+    iconPlay.style.display  = '';
+    iconPause.style.display = 'none';
+    statusText.textContent  = 'Paused';
+
+    if (sourceNode) { try { sourceNode.stop(); } catch(_){} sourceNode = null; }
+    clearQueueAndSchedule();    // drop the scheduled swap and the whole queue
+    cancelAnimationFrame(rafId);
+    resetBars();
+    reanchorMetro();           // metronome falls back to free-run while paused
+  }
+}
+
+// ── Position tracking ──────────────────────────────────────────────────────────
+// source.loop=true never fires onended, so we track position mathematically.
+function currentPosition() {
+  if (!actx || !audioBuffer) return 0;
+  const elapsed = actx.currentTime - playStartCtxTime;
+  return (playStartOffset + elapsed) % audioBuffer.duration;
+}
+
+function currentMeasureIndex() {
+  const i = Math.floor(currentPosition() / measureLength + 1e-9);
+  return Math.min(numMeasures - 1, Math.max(0, i));
+}
+
+// ── Measure grid ───────────────────────────────────────────────────────────────
+// Measures (1-based) to mark in yellow.
+const YELLOW_MEASURES = new Set([4, 8, 13, 17, 21, 29, 33, 37, 42, 46, 50, 58]);
+
+function buildGrid() {
+  gridEl.innerHTML = '';
+  blockEls.length = 0;
+  lastCurrentMeasure = -1;
+  for (let i = 0; i < numMeasures; i++) {
+    const b = document.createElement('button');
+    b.className = 'block' + (YELLOW_MEASURES.has(i + 1) ? ' yellow' : '');
+    b.innerHTML = `<span class="tag"></span><span class="num">${i + 1}</span><span class="fill"></span>`;
+    b.addEventListener('click', () => onBlockClick(i));
+    b.addEventListener('contextmenu', (e) => { e.preventDefault(); onBlockRightClick(i); });
+    gridEl.appendChild(b);
+    blockEls.push({ el: b, fill: b.querySelector('.fill'), tag: b.querySelector('.tag') });
+  }
+  gridCountEl.textContent = `${numMeasures} measures`;
+}
+
+async function onBlockClick(i) {
+  const ok = await initAudio();
+  if (!ok) return;
+  if (actx.state === 'suspended') await actx.resume();
+  launchMeasure(i);
+}
+
+function onBlockRightClick(i) {
+  removeFromQueue(i);
+}
+
+// Left-click a block: start there if stopped, otherwise add it to the play queue.
+function launchMeasure(m) {
+  if (!isPlaying) {
+    pauseOffset = m * measureLength;
+    const withRiser = riserArmed && !!riserBuffer;
+    beginPlayback(pauseOffset, withRiser);
+    return;
+  }
+  addToQueue(m);
+}
+
+// ── Queue management ───────────────────────────────────────────────────────────
+// The queue is a FIFO list (max 4) of measures still waiting to play. Each entry
+// plays for exactly one measure, then the queue advances. When the queue empties,
+// playback simply continues forward from the last queued measure.
+function addToQueue(m) {
+  if (queue.length >= MAX_QUEUE) return;   // capacity reached
+  if (queue.includes(m)) return;           // already queued (one slot per block)
+  queue.push(m);
+  if (riserArmed && riserBuffer) riserSet.add(m);  // attach a riser to this block
+  recomputeSchedule();                     // pick up the change if a boundary is near
+  updateQueueUI();
+}
+
+function removeFromQueue(m) {
+  const idx = queue.indexOf(m);
+  if (idx === -1) return;
+  queue.splice(idx, 1);
+  riserSet.delete(m);
+  // If we just removed the measure that's already scheduled to play next, we must
+  // immediately schedule a replacement for the SAME boundary so there's no gap.
+  recomputeSchedule();
+  updateQueueUI();
+}
+
+// The measure that should play after the current one finishes: the queue head,
+// or the natural next measure if the queue is empty.
+function desiredNextMeasure() {
+  if (queue.length) return queue[0];
+  return (currentMeasureIndex() + 1) % numMeasures;
+}
+
+function timeToBoundary() {
+  const pos  = currentPosition();
+  const into = pos - Math.floor(pos / measureLength) * measureLength;
+  return measureLength - into;
+}
+
+// Schedule (or re-schedule) the swap to `targetMeasure`, sample-accurately, at
+// the end of the current measure. The old source is stopped and a new source is
+// started at the very same AudioContext time → no gap. Because the boundary and
+// the target offset are whole numbers of beats, the metronome grid is preserved
+// and keeps ticking straight through the switch (no re-anchor needed).
+function scheduleSwap(targetMeasure) {
+  const boundaryTime = pendingSwap
+    ? pendingSwap.boundaryTime                 // keep the locked-in boundary
+    : actx.currentTime + timeToBoundary();
+
+  if (!pendingSwap) {
+    try { sourceNode.stop(boundaryTime); } catch(_){}     // current stops at boundary
+  } else {
+    // Replace the previously-scheduled (not-yet-started) incoming source + riser.
+    try { pendingSwap.source.stop(actx.currentTime); } catch(_){}
+    try { pendingSwap.source.disconnect(); } catch(_){}
+    if (pendingSwap.riser) {
+      try { pendingSwap.riser.stop(actx.currentTime); } catch(_){}
+      try { pendingSwap.riser.disconnect(); } catch(_){}
+    }
+  }
+
+  const offset = targetMeasure * measureLength;
+  const ns = actx.createBufferSource();
+  ns.buffer = audioBuffer;
+  ns.loop   = true;
+  ns.connect(gainNode);
+  ns.start(boundaryTime, offset);
+
+  // If this measure has a riser attached, fire it sample-accurately at the
+  // boundary so it lands exactly alongside the block start.
+  let riser = null;
+  if (riserSet.has(targetMeasure)) riser = playRiserAt(boundaryTime);
+
+  pendingSwap = { boundaryTime, offset, source: ns, targetMeasure, riser };
+}
+
+// Keep the scheduled swap (if any) pointing at the right measure after the queue
+// changes. Adding to a non-empty queue never changes the head, so no reschedule;
+// removing the head (or emptying the queue) does.
+function recomputeSchedule() {
+  if (!isPlaying || !pendingSwap) return;
+  const want = desiredNextMeasure();
+  if (want !== pendingSwap.targetMeasure) scheduleSwap(want);
+}
+
+function clearQueueAndSchedule() {
+  if (pendingSwap) {
+    try { pendingSwap.source.stop(actx.currentTime); } catch(_){}
+    try { pendingSwap.source.disconnect(); } catch(_){}
+    if (pendingSwap.riser) {
+      try { pendingSwap.riser.stop(actx.currentTime); } catch(_){}
+      try { pendingSwap.riser.disconnect(); } catch(_){}
+    }
+    pendingSwap = null;
+  }
+  queue = [];
+  riserSet.clear();
+  updateQueueUI();
+}
+
+// Paint queue badges (1-based position) and riser markers.
+function updateQueueUI() {
+  blockEls.forEach((b, i) => {
+    const pos = queue.indexOf(i);
+    if (pos === -1) {
+      b.el.classList.remove('queued');
+      b.tag.textContent = '';
+    } else {
+      b.el.classList.add('queued');
+      b.tag.textContent = pos + 1;
+    }
+    b.el.classList.toggle('has-riser', riserSet.has(i));
+  });
+}
+
+// ── rAF loop: progress bar + grid + visualizer ────────────────────────────────
+const freqData = new Uint8Array(64);
+
+function drawFrame() {
+  if (!isPlaying) return;
+  rafId = requestAnimationFrame(drawFrame);
+
+  // 1) Apply a scheduled swap the moment its boundary passes. The audio already
+  //    switched sample-accurately; here we just update position-tracking state
+  //    and consume the queue head it came from.
+  if (pendingSwap && actx.currentTime >= pendingSwap.boundaryTime) {
+    const applied    = pendingSwap.targetMeasure;
+    sourceNode       = pendingSwap.source;
+    playStartCtxTime = pendingSwap.boundaryTime;
+    playStartOffset  = pendingSwap.offset;
+    pendingSwap      = null;
+    if (queue.length && queue[0] === applied) queue.shift();  // head is now playing
+    riserSet.delete(applied);   // its riser (if any) has already fired
+    updateQueueUI();
+    seekApplied = true;   // don't mistake the jump for a loop wrap
+  }
+
+  // 2) When the queue has entries and a boundary is approaching, lock in the
+  //    next swap (sample-accurate). Empty queue → let loop=true carry forward.
+  if (!pendingSwap && queue.length > 0 && timeToBoundary() <= MEASURE_LOOKAHEAD) {
+    scheduleSwap(desiredNextMeasure());
+  }
+
+  const dur = audioBuffer.duration;
+  const pos = currentPosition();
+
+  // Loop counter: count a full pass only on a natural wrap (pos jumps backward
+  // with no seek/jump this frame).
+  if (seekApplied) {
+    seekApplied = false;
+  } else if (pos + 1e-3 < prevPos) {
+    loopCount++;
+    loopCountEl.textContent = loopCount;
+  }
+  prevPos = pos;
+
+  // Progress bar
+  progressFill.style.width = (pos / dur) * 100 + '%';
+  timeCurrent.textContent  = fmt(pos);
+
+  // Measure grid: move the "playing" highlight + drive the current block's fill.
+  const cmi = currentMeasureIndex();
+  if (cmi !== lastCurrentMeasure) {
+    if (blockEls[lastCurrentMeasure]) {
+      blockEls[lastCurrentMeasure].el.classList.remove('playing');
+      blockEls[lastCurrentMeasure].fill.style.width = '0%';
+    }
+    if (blockEls[cmi]) blockEls[cmi].el.classList.add('playing');
+    lastCurrentMeasure = cmi;
+  }
+  if (blockEls[cmi]) {
+    const into = pos - cmi * measureLength;
+    blockEls[cmi].fill.style.width = Math.max(0, Math.min(100, into / measureLength * 100)) + '%';
+  }
+
+  // Visualizer
+  if (analyser) {
+    analyser.getByteFrequencyData(freqData);
+    const binCount = freqData.length;
+    bars.forEach((b, i) => {
+      const val = freqData[Math.floor(i * binCount / BAR_COUNT)] / 255;
+      b.style.height     = Math.max(4, val * 60) + 'px';
+      b.style.background = val > 0.04
+        ? `hsl(${250 + val * 20}, ${60 + val * 30}%, ${28 + val * 42}%)`
+        : 'var(--bar-idle)';
+    });
+  }
+}
+
+function resetBars() {
+  bars.forEach(b => {
+    b.style.height     = (8 + Math.random() * 40) + 'px';
+    b.style.background = 'var(--bar-idle)';
+  });
+}
+
+// ── Scrub (click progress bar to seek) ────────────────────────────────────────
+progressWrap.addEventListener('click', async (e) => {
+  if (!audioBuffer) return;
+  const rect   = progressWrap.getBoundingClientRect();
+  const frac   = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const offset = frac * audioBuffer.duration;
+
+  pauseOffset = offset;
+
+  if (isPlaying) {
+    clearQueueAndSchedule();   // a manual seek overrides the queue
+    if (sourceNode) { try { sourceNode.stop(); } catch(_){} sourceNode = null; }
+    startSource(offset);
+    seekApplied = true;
+    prevPos = offset % audioBuffer.duration;
+    reanchorMetro();   // re-align clicks to the loop's grid after seeking
+  }
+});
+
+// ── Volume ─────────────────────────────────────────────────────────────────────
+volumeEl.addEventListener('input', () => {
+  if (gainNode) gainNode.gain.value = parseFloat(volumeEl.value);
+});
+
+// ── Riser (arm toggle) ─────────────────────────────────────────────────────────
+riserToggle.addEventListener('click', async () => {
+  await initAudio();
+  if (!riserBuffer) return;            // disabled if riser.ogg is missing
+  riserArmed = !riserArmed;
+  riserToggle.classList.toggle('on', riserArmed);
+  riserToggle.setAttribute('aria-checked', riserArmed ? 'true' : 'false');
+  riserHint.textContent = riserArmed ? 'on — queued blocks get a riser' : 'arm, then queue a block';
+});
+
+// ── Low-pass filter ─────────────────────────────────────────────────────────────
+lowpassEl.addEventListener('input', () => {
+  const pct = parseFloat(lowpassEl.value);
+  lowpassVal.textContent = Math.round(pct) + '%';
+  if (filterNode) {
+    // Smooth the change a touch to avoid zipper noise while dragging.
+    filterNode.frequency.setTargetAtTime(filterFreqFromPct(pct), actx.currentTime, 0.01);
+  }
+});
+
+// ── Metronome ────────────────────────────────────────────────────────────────
+// Lookahead scheduler: a JS timer wakes every LOOKAHEAD_MS and schedules clicks
+// inside SCHEDULE_WINDOW on the AudioContext clock. Clicks are sample-accurate;
+// the timer only decides *what* to schedule, never *when* a click fires.
+//
+// LOCKING: when the loop is playing, beat times are derived from the audio's own
+// beat grid rather than from when the metronome happened to start. The grid
+// origin is buffer-position-0 (the loop's downbeat), extrapolated in context
+// time as `playStartCtxTime - playStartOffset`. Because the loop is a whole
+// number of beats at 100 BPM, buffer-position-0 always lands on a beat, so the
+// grid stays continuous across loop boundaries — the click sits exactly on the
+// loop's pulse forever. Recomputing the origin each tick also means scrubbing
+// re-aligns the metronome automatically.
+const beatDot      = document.getElementById('beatDot');
+const bpmValue     = document.getElementById('bpmValue');
+const bpmSlider    = document.getElementById('bpmSlider');
+const bpmUp        = document.getElementById('bpmUp');
+const bpmDown      = document.getElementById('bpmDown');
+const metroToggle  = document.getElementById('metroToggle');
+
+const LOOKAHEAD_MS     = 25;    // how often the scheduler wakes
+const SCHEDULE_WINDOW  = 0.1;   // how far ahead (seconds) we schedule clicks
+const EPS              = 1e-6;
+
+let bpm            = 100;
+let metroOn        = false;
+let nextNoteTime   = 0;         // time just after the last click we scheduled
+let metroTimer     = null;
+const flashQueue   = [];        // beat times awaiting their visual flash
+const voices       = [];        // {osc, time} scheduled clicks, for cancellation
+
+function scheduleClick(time) {
+  // Short percussive blip: 1000 Hz sine with a fast exponential decay.
+  const osc = actx.createOscillator();
+  const env = actx.createGain();
+  osc.frequency.value = 1000;
+  osc.type = 'sine';
+
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.exponentialRampToValueAtTime(0.6, time + 0.001);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+
+  // Route straight to output so the metronome is independent of the track's
+  // gain and doesn't feed the visualizer analyser.
+  osc.connect(env);
+  env.connect(actx.destination);
+
+  osc.start(time);
+  osc.stop(time + 0.06);
+
+  voices.push({ osc, time });
+  flashQueue.push(time);
+}
+
+// True when there's an audio beat grid to lock onto.
+function audioPlaying() { return isPlaying && !!audioBuffer; }
+
+// Context time of the loop's downbeat grid origin (buffer position 0).
+function gridOrigin() { return playStartCtxTime - playStartOffset; }
+
+function metroScheduler() {
+  const interval = 60 / bpm;            // seconds per beat
+  const horizon  = actx.currentTime + SCHEDULE_WINDOW;
+
+  if (audioPlaying()) {
+    // LOCKED: snap each beat onto the audio's grid.
+    const origin = gridOrigin();
+    const from   = Math.max(nextNoteTime, actx.currentTime);
+    let k = Math.ceil((from - origin) / interval - EPS);
+    let t = origin + k * interval;
+    while (t < horizon) {
+      if (t > actx.currentTime - EPS) scheduleClick(t);
+      t += interval;
+    }
+    nextNoteTime = t;
+  } else {
+    // FREE-RUN: metronome alone, no audio grid to lock to.
+    while (nextNoteTime < horizon) {
+      scheduleClick(nextNoteTime);
+      nextNoteTime += interval;
+    }
+  }
+
+  // Drop voices that have already sounded.
+  const now = actx.currentTime;
+  while (voices.length && voices[0].time < now - 0.1) voices.shift();
+}
+
+// Cancel any clicks scheduled for the future, so a re-anchor is crisp.
+function cancelPendingVoices() {
+  const now = actx.currentTime;
+  for (let i = voices.length - 1; i >= 0; i--) {
+    if (voices[i].time > now + EPS) {
+      try { voices[i].osc.stop(now); } catch (_) {}
+      voices.splice(i, 1);
+    }
+  }
+  // Drop pending flashes too.
+  for (let i = flashQueue.length - 1; i >= 0; i--) {
+    if (flashQueue[i] > now + EPS) flashQueue.splice(i, 1);
+  }
+}
+
+// Re-align the metronome to the audio grid (call when audio starts or seeks).
+function reanchorMetro() {
+  if (!metroOn || !actx) return;
+  cancelPendingVoices();
+  nextNoteTime = actx.currentTime;   // scheduler recomputes the grid from here
+}
+
+// Visual flash driven by rAF so the dot lights up exactly when its click sounds.
+function metroFlashLoop() {
+  if (!metroOn) return;
+  requestAnimationFrame(metroFlashLoop);
+  if (!actx) return;
+  const now = actx.currentTime;
+  while (flashQueue.length && flashQueue[0] <= now) {
+    flashQueue.shift();
+    beatDot.classList.add('flash');
+    setTimeout(() => beatDot.classList.remove('flash'), 70);
+  }
+}
+
+async function startMetronome() {
+  // Metronome needs the AudioContext; create it on demand even if the track
+  // hasn't been started yet.
+  if (!actx) {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (actx.state === 'suspended') await actx.resume();
+
+  metroOn = true;
+  metroToggle.classList.add('on');
+  metroToggle.setAttribute('aria-checked', 'true');
+
+  // If audio is already playing, the scheduler will snap to its grid; otherwise
+  // start the free-run grid a hair in the future.
+  nextNoteTime = actx.currentTime + 0.05;
+  flashQueue.length = 0;
+  metroTimer = setInterval(metroScheduler, LOOKAHEAD_MS);
+  metroFlashLoop();
+}
+
+function stopMetronome() {
+  metroOn = false;
+  metroToggle.classList.remove('on');
+  metroToggle.setAttribute('aria-checked', 'false');
+  clearInterval(metroTimer);
+  metroTimer = null;
+  cancelPendingVoices();
+  flashQueue.length = 0;
+  beatDot.classList.remove('flash');
+}
+
+function setBpm(v) {
+  bpm = Math.max(40, Math.min(240, Math.round(v)));
+  bpmValue.textContent = bpm;
+  bpmSlider.value = bpm;
+  // Re-anchor so the new tempo snaps cleanly onto the grid from the next beat.
+  if (metroOn) reanchorMetro();
+}
+
+metroToggle.addEventListener('click', () => {
+  if (metroOn) stopMetronome(); else startMetronome();
+});
+bpmSlider.addEventListener('input', () => setBpm(parseFloat(bpmSlider.value)));
+bpmUp.addEventListener('click',   () => setBpm(bpm + 1));
+bpmDown.addEventListener('click', () => setBpm(bpm - 1));
+
+// ── Wire up ────────────────────────────────────────────────────────────────────
+playBtn.addEventListener('click', togglePlay);
+
+// Preload + decode on page load so the measure grid is ready immediately.
+// (Creating an AudioContext and decoding need no user gesture — only producing
+// sound does, which still waits for the first Play / block click.)
+initAudio();
+
+</script>
+</body>
+</html>

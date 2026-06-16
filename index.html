@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Monster Energy — Scream Machine</title>
+<style>
+  /* ── Fonts (local) ─────────────────────────────────────────────── */
+  @font-face {
+    font-family: 'Boston';
+    src: url('fonts/boston.ttf') format('truetype');
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'AntonSC';
+    src: url('fonts/AntonSC-Regular.ttf') format('truetype');
+    font-display: swap;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green:      #a6e22e;
+    --green-hi:   #c4ff3d;
+    --green-glow: rgba(166,226,46,0.65);
+    --ink:        #0c0d0a;
+    --fence:      2.4vh;   /* frame thickness, scales with stage height */
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: #000;
+    color: #fff;
+    font-family: 'AntonSC', 'Arial Narrow', sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    cursor: default;
+  }
+
+  /* ── Portrait stage: 9/16, scales to viewport, centered ────────── */
+  #stage {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    height: 100vh;
+    aspect-ratio: 9 / 16;
+    max-width: 100vw;
+    overflow: hidden;
+    background: #000;
+    container-type: size;   /* enables cq* units so text scales to the stage box */
+  }
+  @media (max-aspect-ratio: 9/16) {
+    #stage { width: 100vw; height: auto; }
+  }
+
+  /* ── Background layers (one per screen) ────────────────────────── */
+  .bg-layer { position: absolute; inset: 0; z-index: 0; display: none; }
+  .bg-layer.on { display: block; }
+
+  /* Title: black + bg-menu texture fit to the screen */
+  #bgTitle { background: #000 url('img/bg-menu.png') center / cover no-repeat; }
+
+  .bg-layer video, .bg-layer .fallback {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  #bgHalftone .fallback { background: #111 url('img/halftone.jpg') center/cover no-repeat; }
+  #bgGraffiti .fallback { background: #111 url('img/graffiti.jpg') center/cover no-repeat; }
+  .bg-layer video { opacity: 0.9; }
+
+  /* ── "Fence" frame from bg-border.png segments (title screen) ──── */
+  #fence { position: absolute; inset: 0; z-index: 6; display: none; pointer-events: none; }
+  #fence.on { display: block; }
+  .fence-h, .fence-v { position: absolute; }
+  .fence-h {
+    left: 0; right: 0; height: var(--fence);
+    background: url('img/bg-border.png') repeat-x;
+    background-size: auto 100%;
+  }
+  .fence-h.top    { top: 0; }
+  .fence-h.bottom { bottom: 0; transform: scaleY(-1); }
+  .fence-v { top: 0; bottom: 0; width: var(--fence); overflow: hidden; }
+  .fence-v.left  { left: 0; }
+  .fence-v.right { right: 0; }
+  /* rotate the horizontal segment 90° so it tiles down the vertical edges */
+  .fence-v::before {
+    content: ''; position: absolute; top: 0; left: 0;
+    height: var(--fence); width: 300vh;
+    background: url('img/bg-border.png') repeat-x;
+    background-size: auto 100%;
+    transform-origin: 0 0;
+    transform: translateX(var(--fence)) rotate(90deg);
+  }
+
+  /* ── Vignette (all screens except the menu) ────────────────────── */
+  #vignette {
+    position: absolute; inset: 0; z-index: 7;
+    display: none; pointer-events: none;
+    background: radial-gradient(ellipse 78% 68% at 50% 45%,
+      rgba(0,0,0,0) 32%, rgba(0,0,0,0.5) 78%, rgba(0,0,0,0.82) 100%);
+  }
+  #vignette.on { display: block; }
+
+  /* ── Spinner (shown between START and the Prepare screen) ──────── */
+  #spinner {
+    position: absolute; inset: 0; z-index: 90;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6);
+  }
+  #spinner.show { display: flex; }
+  .spin-ring {
+    width: 18vh; height: 18vh; border-radius: 50%;
+    border: 1.5vh solid rgba(255,255,255,0.16);
+    border-top-color: var(--green);
+    box-shadow: 0 0 26px var(--green-glow);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Persistent Monster logo (title + prepare) ─────────────────── */
+  #brandTop {
+    position: absolute;
+    top: 8%; left: 50%;
+    transform: translateX(-50%);
+    width: 38%;
+    max-width: 300px;
+    z-index: 30;
+    filter: drop-shadow(0 14px 18px rgba(0,0,0,0.95)) drop-shadow(0 0 6px rgba(0,0,0,0.9));
+    pointer-events: none;
+    display: none;
+  }
+  #brandTop.on { display: block; }
+
+  /* ── Screens ───────────────────────────────────────────────────── */
+  .screen {
+    position: absolute; inset: 0;
+    z-index: 10;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 9% 11%;
+    text-align: center;
+  }
+  .screen.active { display: flex; }
+
+  .title {
+    font-family: 'Boston', sans-serif;
+    line-height: 0.92;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    text-shadow: 0 6px 14px rgba(0,0,0,0.85), 0 0 2px #000;
+  }
+
+  /* ── Title screen ──────────────────────────────────────────────── */
+  #screen-title { justify-content: flex-start; padding-top: 23vh; }
+  #screen-title .title {
+    font-size: 10vh;          /* a bit smaller than before */
+    color: #fff;              /* fully white */
+    margin: 0 0 6vh;          /* title + button sit higher up */
+  }
+
+  /* paper button (start.png) with text inside — floats + green hover tint */
+  #startWrap { display: inline-block; animation: floatY 2.6s ease-in-out infinite; }
+  @keyframes floatY {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2.2vh); }
+  }
+  .paper-btn {
+    position: relative;
+    border: none; background: transparent;
+    cursor: pointer;
+    width: 70%; max-width: 460px;
+    transition: transform .18s ease, filter .18s ease;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.6));
+  }
+  #startBtn { width: 100%; }
+  .paper-btn img { width: 100%; display: block; pointer-events: none; }
+  .paper-btn .label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Boston', sans-serif;
+    text-transform: uppercase;
+    color: var(--ink);
+    line-height: 0.9;
+    transform: rotate(-2deg);
+    padding: 0 12%;
+    z-index: 2;
+  }
+  /* green tint overlay — masked by the PNG's own alpha so only the
+     non-transparent pixels get tinted (multiply keeps the black spray dark) */
+  .btn-tint {
+    position: absolute; inset: 0;
+    background: var(--green);
+    -webkit-mask: var(--btn-mask) center / 100% 100% no-repeat;
+            mask: var(--btn-mask) center / 100% 100% no-repeat;
+    mix-blend-mode: multiply;
+    opacity: 0;
+    transition: opacity .18s ease;
+    pointer-events: none;
+  }
+  #startBtn { --btn-mask: url('img/start.png'); }
+  #backBtn  { --btn-mask: url('img/paper-button.png'); }
+  #startBtn:hover, #backBtn:hover { transform: scale(1.07); filter: drop-shadow(0 0 22px var(--green-glow)); }
+  #startBtn:hover .btn-tint, #backBtn:hover .btn-tint { opacity: 0.5; }
+  #startBtn:active, #backBtn:active { transform: scale(0.98); }
+  #startBtn .label  { font-size: 6vh; }
+
+  /* bottom "recalibrate" button — opens calibration any time */
+  #recalBtn {
+    position: absolute; bottom: 3%; left: 50%;
+    transform: translateX(-50%);
+    z-index: 20; display: none;
+    font-family: 'AntonSC', sans-serif;
+    font-size: 1.9vh; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #d2d2d2;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 99px;
+    padding: 1.1vh 3.2vh;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  #recalBtn.on { display: block; }
+  #recalBtn:hover { color: var(--green); border-color: var(--green); }
+
+  /* ── Prepare screen ────────────────────────────────────────────── */
+  #screen-prep { justify-content: center; }
+  #scrapStage {
+    display: flex; flex-wrap: wrap;
+    align-items: center; justify-content: center;
+    row-gap: 1.6vh; column-gap: 0;
+    max-width: 92%;
+    perspective: 1100px;
+    transform-style: preserve-3d;
+  }
+
+  /* paper scrap letters (ported from paper-scrap-letters.html) */
+  .word  { display: inline-flex; align-items: center; gap: 0.6cqmin; transform-style: preserve-3d; }
+  .space { width: 3cqmin; }
+  .scrap {
+    --r: 0deg; --fs: 9cqmin; --px: 0.18em; --py: 0.12em;
+    position: relative; display: inline-block;
+    background: #fff; color: #111;
+    font-family: 'AntonSC', sans-serif;
+    font-size: var(--fs); line-height: 1;
+    padding: var(--py) var(--px);
+    transform: rotate(var(--r));
+    filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55));
+    opacity: 0;
+    transform-style: preserve-3d;
+    will-change: transform, opacity;
+  }
+  .scrap::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(135deg, rgba(0,0,0,0.05), rgba(0,0,0,0) 40%),
+      radial-gradient(circle at 70% 80%, rgba(0,0,0,0.07), rgba(0,0,0,0) 55%);
+    pointer-events: none;
+  }
+  .scrap.in { animation: slam .55s cubic-bezier(.2,1.4,.35,1) forwards; animation-delay: var(--d, 0s); }
+  @keyframes slam {
+    0%   { opacity: 0; transform: translate3d(0,-40px,650px) rotateX(-55deg) rotate(var(--r)) scale(2.4); filter: drop-shadow(10px 16px 14px rgba(0,0,0,0.5)) blur(3px); }
+    55%  { opacity: 1; filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55)) blur(0); }
+    70%  { opacity: 1; transform: translate3d(0,0,0) rotateX(8deg) rotate(var(--r)) scale(.9); }
+    85%  { transform: translate3d(0,0,0) rotateX(-3deg) rotate(var(--r)) scale(1.06); }
+    100% { opacity: 1; transform: translate3d(0,0,0) rotateX(0deg) rotate(var(--r)) scale(1); filter: drop-shadow(5px 8px 7px rgba(0,0,0,0.55)) blur(0); }
+  }
+
+  /* ── Action screen ─────────────────────────────────────────────── */
+  #screen-action { justify-content: center; padding-top: 8%; }
+
+  /* left dB meter: 0→130, gradient green/yellow/red, fill reacts to loudness */
+  #dbMeter {
+    position: absolute; left: 5%; top: 50%;
+    transform: translateY(-50%);
+    width: 6.5%; height: 56vh; z-index: 12;
+  }
+  .db-track {
+    position: absolute; inset: 0; overflow: hidden;
+    border-radius: 99px; background: #14160f;
+    box-shadow: inset 0 0 0 0.4vh rgba(255,255,255,0.14), 0 0 16px rgba(0,0,0,0.6);
+  }
+  .db-fill {                       /* clip window, grows bottom-up (JS sets height) */
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 0; overflow: hidden;
+  }
+  .db-fill-inner {                 /* full-meter-height gradient → absolute dB colors */
+    position: absolute; left: 0; right: 0; bottom: 0; height: 56vh;
+    background: linear-gradient(to top, #19e84a 0%, #ffe000 50%, #ff2a2a 100%);
+  }
+  .db-ticks {
+    position: absolute; left: 100%; top: 0; bottom: 0; margin-left: 1vh;
+    display: flex; flex-direction: column; justify-content: space-between;
+    font-family: 'AntonSC', sans-serif; font-size: 1.7vh; color: #fff;
+    opacity: 0.85; white-space: nowrap; text-shadow: 0 2px 4px #000;
+  }
+  #actMsg {
+    font-family: 'AntonSC', sans-serif;
+    font-size: 7vh; text-transform: uppercase; color: #fff;
+    text-shadow: 0 0 18px var(--green-glow), 0 6px 12px rgba(0,0,0,0.85);
+    margin-bottom: 2vh; min-height: 8vh;
+    line-height: 0.95;
+  }
+  #actionMeter {
+    position: relative;
+    width: 70%; flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    filter: drop-shadow(0 0 24px rgba(0,0,0,0.7));
+    transition: transform .08s ease-out, filter .08s ease-out;
+  }
+  #actionMeter.pulse { transform: scale(1.07); filter: drop-shadow(0 0 34px var(--green-glow)) brightness(1.18); }
+  #actionMeter svg { width: 100%; height: 100%; max-height: 52vh; }
+  #actScore {
+    font-family: 'AntonSC', sans-serif;
+    font-size: 9vh; color: var(--green);
+    text-shadow: 0 0 22px var(--green-glow);
+    margin: 1vh 0;
+  }
+  #actScore small { font-size: 3.4vh; color: #fff; opacity: .8; }
+  #timerBar {
+    width: 78%; height: 2.4vh;
+    background: rgba(255,255,255,0.15);
+    border-radius: 99px; overflow: hidden;
+    margin-bottom: 1.4vh;
+  }
+  #timerFill {
+    height: 100%; width: 100%;
+    background: linear-gradient(90deg, var(--green), var(--green-hi));
+    border-radius: 99px;
+  }
+  #timerNum { font-family: 'AntonSC', sans-serif; font-size: 4vh; color: #fff; opacity: .9; }
+
+  /* ── Results screen — blackboard fills the stage; everything sits inside ── */
+  #screen-results { padding: 3% 3%; }
+  #board {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 326 / 575;
+    max-height: 97vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: space-between;
+    padding: 13% 14% 14%;
+  }
+  #board .board-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
+  .res-logo { width: 42%; max-width: 220px; filter: drop-shadow(0 8px 12px rgba(0,0,0,0.85)); }
+  .res-mid { display: flex; flex-direction: column; align-items: center; }
+  #board .res-head {
+    font-family: 'Boston', sans-serif;
+    font-size: 4vh; text-transform: uppercase; color: #fff;
+    line-height: 1.08; margin-bottom: 1.6vh;
+  }
+  #board .res-head .accent { color: var(--green); }
+  #finalScore {
+    font-family: 'Boston', sans-serif;
+    font-size: 15vh; line-height: 0.9; color: var(--green);
+    text-shadow: 0 0 26px var(--green-glow);
+  }
+  #finalScore small { font-size: 4vh; color: #fff; }
+  #backWrap { display: inline-block; width: 74%; max-width: 360px; animation: floatY 2.6s ease-in-out infinite; }
+  #backBtn { width: 100%; }
+  #backBtn .label { font-size: 3.4vh; }
+
+  /* ── Modal + calibration overlay ───────────────────────────────── */
+  .overlay {
+    position: absolute; inset: 0; z-index: 100;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.84); padding: 8%;
+  }
+  .overlay.show { display: flex; }
+  .modal-card, .cal-card {
+    background: #0c0d0a url('img/bg-menu.png'); background-size: 280px;
+    border: 2px solid var(--green); border-radius: 16px;
+    padding: 8% 7%; text-align: center; max-width: 92%;
+    box-shadow: 0 0 44px rgba(0,0,0,0.85), 0 0 26px var(--green-glow);
+  }
+  .modal-card h2 {
+    font-family: 'Boston', sans-serif; font-size: 5.4vh;
+    color: #fff; text-transform: uppercase; margin-bottom: 2.6vh;
+  }
+  .modal-card p { font-size: 2.7vh; line-height: 1.45; color: #e8e8e8; margin-bottom: 4vh; }
+  .modal-btns { display: flex; flex-direction: column; gap: 2.2vh; align-items: center; }
+  .mini-btn {
+    font-family: 'Boston', sans-serif; text-transform: uppercase;
+    font-size: 3.1vh; padding: 1.7vh 5vh; border: none; border-radius: 12px;
+    cursor: pointer; background: #2a2d22; color: #fff;
+    transition: transform .12s, box-shadow .15s, background .15s;
+  }
+  .mini-btn.primary {
+    background: linear-gradient(135deg, var(--green), var(--green-hi));
+    color: var(--ink); box-shadow: 0 0 22px var(--green-glow);
+  }
+  .mini-btn:hover { transform: scale(1.05); }
+  .cal-meter { width: 34vh; height: 34vh; margin: 0 auto 3.4vh; filter: drop-shadow(0 0 26px var(--green-glow)); }
+  .cal-meter svg { width: 100%; height: 100%; }
+  .cal-card p { font-size: 2.8vh; color: #fff; line-height: 1.4; }
+  .cal-error { color: #ff5a5a; margin-top: 1vh; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <!-- ── Background layers ─────────────────────────────────────── -->
+  <div id="bgTitle" class="bg-layer on"></div>
+  <div id="bgHalftone" class="bg-layer">
+    <div class="fallback"></div>
+    <video class="bgvid" muted loop playsinline autoplay poster="img/halftone.jpg">
+      <source src="img/halftone-loop.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div id="bgGraffiti" class="bg-layer">
+    <div class="fallback"></div>
+    <video class="bgvid" muted loop playsinline autoplay poster="img/graffiti.jpg">
+      <source src="img/graffiti-loop.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <!-- "fence" frame (title only) -->
+  <div id="fence" class="on">
+    <div class="fence-h top"></div>
+    <div class="fence-h bottom"></div>
+    <div class="fence-v left"></div>
+    <div class="fence-v right"></div>
+  </div>
+
+  <!-- Vignette (every screen except the menu) -->
+  <div id="vignette"></div>
+
+  <!-- Persistent Monster logo (title + prepare) -->
+  <img id="brandTop" class="on" src="img/monster-large-noline.png" alt="Monster Energy">
+
+  <!-- ── Title ──────────────────────────────────────────────────── -->
+  <section id="screen-title" class="screen active">
+    <h1 class="title">Scream<br>Machine</h1>
+    <div id="startWrap">
+      <button id="startBtn" class="paper-btn">
+        <img src="img/start.png" alt="">
+        <span class="btn-tint"></span>
+        <span class="label">Start</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ── Prepare ────────────────────────────────────────────────── -->
+  <section id="screen-prep" class="screen">
+    <div id="scrapStage"></div>
+  </section>
+
+  <!-- ── Action ─────────────────────────────────────────────────── -->
+  <section id="screen-action" class="screen">
+    <div id="dbMeter">
+      <div class="db-track"><div class="db-fill" id="dbFill"><div class="db-fill-inner"></div></div></div>
+      <div class="db-ticks"><span>130</span><span>65</span><span>0</span></div>
+    </div>
+    <div id="actMsg">CAN'T HEAR YOU!</div>
+    <div id="actionMeter"></div>
+    <div id="actScore">0<small> dB</small></div>
+    <div id="timerBar"><div id="timerFill"></div></div>
+    <div id="timerNum">10</div>
+  </section>
+
+  <!-- ── Results ────────────────────────────────────────────────── -->
+  <section id="screen-results" class="screen">
+    <div id="board">
+      <img class="board-bg" src="img/blackboard.png" alt="">
+      <img class="res-logo" src="img/monster-large-noline.png" alt="Monster Energy">
+      <div class="res-mid">
+        <div class="res-head">Max Scream<br><span class="accent">Detected!</span></div>
+        <div id="finalScore">0<small> dB</small></div>
+      </div>
+      <div id="backWrap">
+        <button id="backBtn" class="paper-btn">
+          <img src="img/paper-button.png" alt="">
+          <span class="btn-tint"></span>
+          <span class="label">Main Menu</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- bottom recalibrate button (title only) -->
+  <button id="recalBtn" class="on">Recalibrate Mic</button>
+
+  <!-- ── Mic notice modal ───────────────────────────────────────── -->
+  <div id="micModal" class="overlay show">
+    <div class="modal-card">
+      <h2>Microphone Access</h2>
+      <p>This game listens through your device's microphone to measure how loud you can scream. Tap <b>OK</b> to allow microphone access and start the music.</p>
+      <div class="modal-btns">
+        <button id="okBtn" class="mini-btn primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Calibration overlay ────────────────────────────────────── -->
+  <div id="calOverlay" class="overlay">
+    <div class="cal-card">
+      <div id="calMeter" class="cal-meter"></div>
+      <p id="calCaption">Stay silent while the microphone calibrates…</p>
+      <p id="calError" class="cal-error" style="display:none"></p>
+      <button id="calClose" class="mini-btn" style="display:none;margin-top:3vh">Close</button>
+    </div>
+  </div>
+
+  <!-- ── Spinner (START → Prepare) ──────────────────────────────── -->
+  <div id="spinner"><div class="spin-ring"></div></div>
+
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────
+const AUDIO_LOOP   = 'audio/full.ogg';
+const AUDIO_RISER  = 'audio/riser.ogg';
+const AUDIO_SCREAM = 'audio/scream.ogg';
+const AUDIO_SQUEAL = 'audio/squeal.ogg';
+
+const AUDIO_BPM         = 100;
+const BEAT              = 60 / AUDIO_BPM;          // 0.6s per beat
+const BEATS_PER_MEASURE = 4;
+const measureLength     = BEAT * BEATS_PER_MEASURE; // 2.4s
+
+const SCREAM_SECONDS = 10;
+const DB_FLOOR  = -60;     // default noise floor before calibration
+const SCORE_MIN = 0;       // calibrated loudness scale (shown as "dB"): silence → 0
+const SCORE_MAX = 130;     // ...full scale shows as 130 (matches the left meter top)
+const RMS_FLOOR = 1e-8;
+const MUSIC_VOL = 0.85;
+const DB_REF    = 100;     // dBFS + DB_REF ≈ an SPL-style positive reading
+const MAX_DB    = 95;      // this loudness = 100% (top = 130 on the scale)
+const CEIL_DBFS = MAX_DB - DB_REF;   // -5 dBFS is the 100% ceiling
+
+// Drum-fill "touch points" (1-based measures) → stored 0-based.
+const TOUCH_POINTS_1 = [4, 8, 17, 21, 33, 37, 42, 46, 50];
+const TOUCH_SET = new Set(TOUCH_POINTS_1.map(m => m - 1));
+
+const COUNT_WORDS = ['3', '2', '1', 'SCREAM!'];
+const BAND_MSGS   = ["CAN'T HEAR YOU!", "GET LOUD!", "MAXIMUM SCREAM!", "MONSTROUS!!"];
+const BAND_SUBDIV = [1, 1, 2, 4];   // pulses / refreshes per beat, per band
+
+// Monster logo paths (from img/monster.svg) — used for both fill meters.
+const MONSTER_PATHS = [
+  "m60 50c4.33-11.34 22.77-7.66 40-20 13.06 4.99 26.45-0.04 40-10 8.33 6.78 18.44 9.9 30 10 4.96 12.99 10.53 24.91 20 30-8.93 0.94-9.68 5.38-10 10-8.52 1.26-15.04 4.44-17.45 11.6 1.1 17.07 0.95 30.36 7.45 38.4-6.9 3.71-10.32 10.31-10 20-0.61 12.48-0.02 24.09 9.7 29.11-2.77 11.59 2.97 21.41 10.3 30.89-8.53 13.54-11.62 25.3 0 32.23-7.23 10.26-6.1 19.36 0 27.77-11.53 17.69-17.53 38.01-20 60-0.25 5.85 4.01 12.73 10 20-6.73 13.29-10.26 26.62-10 40 13.72 9.26-1.28 22.34 10 50-0.66 6.81-4.5 13.45-10 20 3.48-11.5 3.32-21.43 0-30-13.09-20.85-7.41-53.89-20-70 5.61-11.33 6.02-24.51 0-40l-10-10c4.61-7.1 8.3-13.89 10-20 4.87-12.5 4.21-25.62 0-39.15 3.05-11.7 3.47-22.18 0-30.85 0.28-15.08-2.88-28.5-10-40l-10-10c1-17.14 4.26-33.82 10-50 2.12-13.86 0.05-24.75-10-30-4.96-2.28 0.11-10.53 0-20-0.3-4.36-3.55-7.72-10-10h-40z",
+  "m170 40l30-20h20c5.66-5.98 15.61-9.34 30-10 9.59-11.42 22.02 12.87 40 10-2.64 7.58 0.12 14.33 10 20l-20 10c7.28 6.64-10.53 14.68-10 30 0.26 10.54 2.77 20.68 10 30-6.15 5.3-9.67 11.88-10 20 8.35 2.14 12.01 8.52 10 20-6.92 11.15-10.13 22.18 0 32.77-8.48 7.19-6.84 20.61 0 37.23 7.34 20.85-35.74 21.49-20 110-17.34 56.06 7.23 48.4 0 70l-10 60-10 20c-7.87-14.47 5.45-32.43 0-40 3.4-15.43-1.32-24.3-10-30l10-20c-13.62-12.87-0.21-32.02-10-60v-20c-1.63-4.84-5.06-8.09-10-10 10.99-18.91 16.29-43.64 20-70 0.23-12.92-4.24-26.39-10-40 6.54-7.11 8.99-17.9 10-30-7.91-1.55-10.05-5.35-10-10 3.94-15.91 3.44-32.68 0-50l-10-10c4.66-23.71 5.99-44.49-10-50-14.27-2.15-27.42 2.29-40 10z",
+  "m290 60l10-10c11.35-7.93 21.11-10.45 30-10 2.83-8.24 9.13-15.06 20-20 14.99 0.62 25.89 3.46 30 10-1.06 16.17 14.32 25.95 10 40 0.11 20.85-20.96 27.55-20 60-5.92 11.74-6 25.05 0 40 0 0 2.39 8.14-0.96 18.19-3.35 10.05 10.96 31.81 10.96 31.81 9.15 19.89-19.63 40.24-9.04 47.34 6.51 10.04 6.29 20.63 0.32 27.13-5.36 5.93-5.55 8.03-1.91 15.96 3.56 8.65 2.96 15.33-1.91 19.47-6.57 6.98 0.01 17.46 2.54 30.1-8.87 9.4-15.48 22.85-20 40v20l-10-30c0.77-12.05 12.66-17.45 7.98-24.68-12.33-9.42-9.75-18.5-3.83-22.34 2.59-2.7 8.28-9.51 3.19-17.55-7.16-13.56 5.06-22.82 2.66-35.43v-60l-3.94-21.06 3.94-18.94c-7.95-8.64-12.73-18.21-10-30 5.11-20-7.66-14.89-5.74-25.43 1.11-6.38 7.87-4.26 10.53-14.68-8.3-23.93 3.11-44.15-4.79-49.89-6.1-6.1-15.37-7.24-30 0-3.41-7.92-8.93-12.86-20-10z"
+];
+
+// ── DOM refs ─────────────────────────────────────────────────────────
+const screens = {
+  title:   document.getElementById('screen-title'),
+  prep:    document.getElementById('screen-prep'),
+  action:  document.getElementById('screen-action'),
+  results: document.getElementById('screen-results'),
+};
+const bgLayers   = {
+  title:   document.getElementById('bgTitle'),
+  halftone:document.getElementById('bgHalftone'),
+  graffiti:document.getElementById('bgGraffiti'),
+};
+const fence      = document.getElementById('fence');
+const brandTop   = document.getElementById('brandTop');
+const startWrap  = document.getElementById('startWrap');
+const startBtn   = document.getElementById('startBtn');
+const backBtn    = document.getElementById('backBtn');
+const recalBtn   = document.getElementById('recalBtn');
+const scrapStage = document.getElementById('scrapStage');
+const actMsg     = document.getElementById('actMsg');
+const actionMeter= document.getElementById('actionMeter');
+const actScore   = document.getElementById('actScore');
+const timerFill  = document.getElementById('timerFill');
+const timerNum   = document.getElementById('timerNum');
+const dbFill     = document.getElementById('dbFill');
+const finalScore = document.getElementById('finalScore');
+const micModal   = document.getElementById('micModal');
+const okBtn      = document.getElementById('okBtn');
+const calOverlay = document.getElementById('calOverlay');
+const spinner    = document.getElementById('spinner');
+const vignette   = document.getElementById('vignette');
+const calMeter   = document.getElementById('calMeter');
+const calCaption = document.getElementById('calCaption');
+const calError   = document.getElementById('calError');
+const calClose   = document.getElementById('calClose');
+
+// ── State ────────────────────────────────────────────────────────────
+let actx = null, gainNode = null;
+let buffers = { loop: null, riser: null, scream: null, squeal: null };
+let sourceNode = null;
+let playing = false;
+let musicStartTime = 0;        // actx.currentTime when the loop started (beat-grid origin)
+let posStartTime = 0;          // ctx time of the last (re)start/swap of content
+let posStartOffset = 0;        // buffer offset (s) playing at posStartTime
+let bufferDuration = 0;
+let numMeasures = 58;
+
+let micStream = null, analyser = null, timeData = null, micReady = false;
+let micError = '';             // '', 'insecure', 'unsupported', or 'denied'
+let micBaseline = DB_FLOOR;    // calibrated noise floor (becomes "0")
+
+// flow / director (driven by AudioContext time, not measure index)
+let flow = 'idle';             // idle | spinner | prep | count | action | results
+let spinnerUntil = 0;          // ctx time: show spinner until here, then GET READY
+let countdownBoundary = 0;     // ctx time of the drum-fill downbeat (countdown start)
+let actionTime = 0;            // ctx time of the drop (action begins)
+let lastCountBeat = -1;
+
+// action run
+let actionStartCtx = 0, peakScore = SCORE_MIN, dispNorm = 0, lastTick = -1;
+
+let calFill = null, actFill = null, calFromModal = false;
+let rafId = null;
+
+// ── Fill-meter SVG builder (Monster logo clip + green gradient) ──────
+function buildMeter(container, id) {
+  container.innerHTML =
+    '<svg viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' +
+      '<defs>' +
+        '<clipPath id="' + id + '-clip">' + MONSTER_PATHS.map(d => '<path d="' + d + '"/>').join('') + '</clipPath>' +
+        '<linearGradient id="' + id + '-grad" x1="0" y1="1" x2="0" y2="0">' +
+          '<stop offset="0%" stop-color="#7bbf16"/>' +
+          '<stop offset="60%" stop-color="#a6e22e"/>' +
+          '<stop offset="100%" stop-color="#c4ff3d"/>' +
+        '</linearGradient>' +
+      '</defs>' +
+      '<g clip-path="url(#' + id + '-clip)">' +
+        '<rect x="0" y="0" width="480" height="480" fill="#1c1f17"/>' +
+        '<rect class="meter-fill" x="0" y="480" width="480" height="0" fill="url(#' + id + '-grad)"/>' +
+      '</g>' +
+    '</svg>';
+  return container.querySelector('.meter-fill');
+}
+function setFill(rect, norm) {
+  const h = Math.max(0, Math.min(1, norm)) * 480;
+  rect.setAttribute('y', 480 - h);
+  rect.setAttribute('height', h);
+}
+
+// ── Audio engine (Web Audio buffer loop, ported from audio.html) ─────
+async function loadBuffer(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + url);
+    return await actx.decodeAudioData(await res.arrayBuffer());
+  } catch (e) {
+    console.warn('Could not load ' + url + ':', e.message);
+    return null;
+  }
+}
+
+async function initAudio() {
+  if (actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  gainNode = actx.createGain();
+  gainNode.gain.value = MUSIC_VOL;
+  gainNode.connect(actx.destination);
+
+  const [loop, riser, scream, squeal] = await Promise.all([
+    loadBuffer(AUDIO_LOOP), loadBuffer(AUDIO_RISER),
+    loadBuffer(AUDIO_SCREAM), loadBuffer(AUDIO_SQUEAL),
+  ]);
+  buffers = { loop, riser, scream, squeal };
+  if (loop) {
+    bufferDuration = loop.duration;
+    numMeasures = Math.max(1, Math.round(bufferDuration / measureLength));
+  }
+}
+
+// Seamless loop: source.loop = true is sample-accurate (zero gap).
+function startMusic() {
+  if (!buffers.loop || playing) return;
+  const src = actx.createBufferSource();
+  src.buffer = buffers.loop;
+  src.loop   = true;
+  src.connect(gainNode);
+  src.start(0, 0);
+  sourceNode = src;
+  musicStartTime = actx.currentTime;
+  posStartTime = musicStartTime;
+  posStartOffset = 0;
+  playing = true;
+  rafId = requestAnimationFrame(loop);
+}
+
+// Actual 0-based measure of full.ogg playing right now (content, after any swap).
+function currentContentMeasure() {
+  if (!playing || !bufferDuration) return 0;
+  const pos = (posStartOffset + (actx.currentTime - posStartTime)) % bufferDuration;
+  return Math.floor(pos / measureLength) % numMeasures;
+}
+
+// Next drum-fill (touch point) ahead, requiring a free "Get Ready" measure first
+// (≥2 measures away), wrapping around the loop.
+function nextDrumFill(curM) {
+  for (let d = 2; d <= numMeasures + 2; d++) {
+    const m = (curM + d) % numMeasures;
+    if (TOUCH_SET.has(m)) return m;
+  }
+  return (curM + 2) % numMeasures;
+}
+
+// Monotonic song timeline (never wraps) — drives the inaudible 100 BPM grid.
+function songTime()      { return playing ? Math.max(0, actx.currentTime - musicStartTime) : 0; }
+function absBeat()       { return Math.floor(songTime() / BEAT); }
+function absMeasure()    { return Math.floor(absBeat() / BEATS_PER_MEASURE); }
+function beatInMeasure() { return absBeat() % BEATS_PER_MEASURE; }
+function measureInLoop() { return absMeasure() % numMeasures; }
+
+function playOneShot(buf, when) {
+  if (!buf || !actx) return;
+  const s = actx.createBufferSource();
+  s.buffer = buf;
+  s.connect(gainNode);
+  s.start(when == null ? actx.currentTime : Math.max(actx.currentTime, when));
+}
+
+function muteMusic()   { if (gainNode) gainNode.gain.value = 0; }
+function unmuteMusic() { if (gainNode) gainNode.gain.value = MUSIC_VOL; }
+
+// Next beat-aligned measure boundary at or after time `t`.
+function nextBoundary(t) {
+  const k = Math.ceil((t - musicStartTime) / measureLength - 1e-6);
+  return musicStartTime + k * measureLength;
+}
+
+// Seamlessly jump the loop to measure `m0` (0-based) at AudioContext time
+// `atTime`. Boundaries are whole measures, so the beat grid stays continuous —
+// this "queues" a drum-fill measure to play right after the current one.
+function swapToMeasure(m0, atTime) {
+  if (!buffers.loop) return;
+  const offset = (m0 * measureLength) % bufferDuration;
+  const ns = actx.createBufferSource();
+  ns.buffer = buffers.loop;
+  ns.loop = true;
+  ns.connect(gainNode);
+  ns.start(atTime, offset);
+  try { sourceNode.stop(atTime); } catch (_) {}
+  sourceNode = ns;
+  posStartTime = atTime;
+  posStartOffset = offset;
+}
+
+// ── Microphone + level metering ──────────────────────────────────────
+async function requestMic() {
+  if (micReady) return;
+  // iOS/Safari only expose getUserMedia (and only show the prompt) on a secure
+  // page — https:// or localhost. Over a plain http LAN address it's undefined.
+  if (!window.isSecureContext) { micError = 'insecure'; return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { micError = 'unsupported'; return; }
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
+    });
+    micReady = true;
+    micError = '';
+  } catch (e) {
+    micReady = false;
+    micError = 'denied';
+  }
+}
+function ensureMicGraph() {
+  if (micReady && micStream && !analyser && actx) {
+    const src = actx.createMediaStreamSource(micStream);
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0;
+    timeData = new Float32Array(analyser.fftSize);
+    src.connect(analyser);   // analyser is a sink (not routed to output)
+  }
+}
+function readDbfs() {
+  if (!analyser) return -Infinity;
+  analyser.getFloatTimeDomainData(timeData);
+  let sum = 0;
+  for (let i = 0; i < timeData.length; i++) sum += timeData[i] * timeData[i];
+  const rms = Math.sqrt(sum / timeData.length);
+  return 20 * Math.log10(Math.max(rms, RMS_FLOOR));
+}
+// Map dBFS to a 0..1 level using the calibrated baseline as "0".
+function levelFrom(dbfs) {
+  if (!isFinite(dbfs)) return { norm: 0, score: SCORE_MIN };
+  const floorDb = micBaseline;
+  // 100% (top) when the mic reaches ~95 dB (CEIL_DBFS), measured from the
+  // calibrated silence floor — not at full digital scale.
+  const norm = Math.max(0, Math.min(1, (dbfs - floorDb) / (CEIL_DBFS - floorDb)));
+  const score = Math.round(SCORE_MIN + norm * (SCORE_MAX - SCORE_MIN));
+  return { norm, score };
+}
+
+// ── Calibration ──────────────────────────────────────────────────────
+// Average 30 readings over 3s; that ambient level becomes the new "0".
+function calibrate() {
+  return new Promise(resolve => {
+    const t0 = performance.now();
+    const samples = [];
+    let lastSample = -1;
+    function step() {
+      const el = performance.now() - t0;
+      const p = Math.min(1, el / 3000);
+      setFill(calFill, p);
+      const si = Math.floor(el / 100);
+      if (si !== lastSample && si < 30) {
+        lastSample = si;
+        const d = readDbfs();
+        if (isFinite(d)) samples.push(d);
+      }
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        const avg = samples.length ? samples.reduce((a, b) => a + b, 0) / samples.length : DB_FLOOR;
+        micBaseline = Math.max(-60, Math.min(-12, avg));   // clamp to a sane range
+        resolve();
+      }
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+async function runCalibration(fromModal) {
+  calFromModal = fromModal;
+  calError.style.display = 'none';
+  calError.textContent = '';
+  calClose.style.display = 'none';
+  calCaption.style.display = '';
+  setFill(calFill, 0);
+  calOverlay.classList.add('show');
+  muteMusic();   // keep the booth quiet so calibration reads true ambient noise
+
+  if (actx && actx.state === 'suspended') await actx.resume();
+  if (!micReady) await requestMic();
+  ensureMicGraph();
+
+  if (!micReady || !analyser) {
+    calCaption.style.display = 'none';
+    calError.textContent = (micError === 'insecure')
+      ? 'Microphone needs a secure page. Open this game via https:// or localhost.'
+      : 'Could not calibrate. Microphone access denied.';
+    calError.style.display = '';
+    calClose.style.display = '';
+    return;   // stays muted until the user closes
+  }
+  await calibrate();
+  calOverlay.classList.remove('show');
+  finishCalibration();
+}
+
+// Called when the calibration screen closes (success or denial): the bgm
+// begins here, so on page load the music starts right after calibration.
+function finishCalibration() {
+  unmuteMusic();
+  startMusic();   // no-op if already playing (e.g. mid-session recalibration)
+  revealTitle();
+}
+
+function revealTitle() {
+  startWrap.style.display = '';
+  recalBtn.classList.add('on');
+}
+
+// ── Paper-scrap text engine (ported, local AntonSC) ──────────────────
+const rand = (a, b) => Math.random() * (b - a) + a;
+function makeClip() {
+  const j = (lo, hi) => rand(lo, hi).toFixed(1);
+  return 'polygon(' + j(0,4) + '% ' + j(0,5) + '%,' + j(96,100) + '% ' + j(0,4) + '%,' +
+         j(96,100) + '% ' + j(95,100) + '%,' + j(0,4) + '% ' + j(96,100) + '%)';
+}
+function makeScrap(ch, minFs, maxFs) {
+  const el = document.createElement('span');
+  el.className = 'scrap';
+  el.textContent = ch;
+  el.style.setProperty('--r', rand(-3.5, 3.5).toFixed(1) + 'deg');
+  el.style.setProperty('--fs', rand(minFs, maxFs).toFixed(1) + 'cqmin');
+  el.style.setProperty('--px', rand(0.10, 0.34).toFixed(2) + 'em');
+  el.style.setProperty('--py', rand(0.06, 0.26).toFixed(2) + 'em');
+  el.style.clipPath = makeClip();
+  return el;
+}
+function clearScraps() { scrapStage.innerHTML = ''; }
+function showScrap(text, minFs, maxFs, stagger) {
+  scrapStage.innerHTML = '';
+  const words = String(text).split(' ');
+  words.forEach((word, wi) => {
+    if (word.length) {
+      const w = document.createElement('span');
+      w.className = 'word';
+      for (const ch of word) w.appendChild(makeScrap(ch, minFs, maxFs));
+      scrapStage.appendChild(w);
+    }
+    if (wi < words.length - 1) {
+      const sp = document.createElement('span');
+      sp.className = 'space';
+      scrapStage.appendChild(sp);
+    }
+  });
+  const scraps = scrapStage.querySelectorAll('.scrap');
+  requestAnimationFrame(() => {
+    scraps.forEach((el, i) => {
+      el.style.setProperty('--d', (i * stagger).toFixed(2) + 's');
+      el.classList.add('in');
+    });
+  });
+}
+function dropText(text) { showScrap(text, 9, 11, 0.05); }   // cqmin — scales to the stage
+function dropBeat(text) {
+  // single digits go big; longer words (SCREAM!) stay small enough to fit the width
+  const big = String(text).length <= 1 ? 28 : 11;
+  showScrap(text, big, big, 0.04);
+}
+
+// ── Screen + background management ───────────────────────────────────
+function showScreen(name) {
+  for (const k in screens) screens[k].classList.toggle('active', k === name);
+  bgLayers.title.classList.toggle('on', name === 'title');
+  bgLayers.halftone.classList.toggle('on', name === 'prep' || name === 'results');
+  bgLayers.graffiti.classList.toggle('on', name === 'action');
+  fence.classList.toggle('on', name === 'title');
+  vignette.classList.toggle('on', name !== 'title');
+  brandTop.classList.toggle('on', name === 'title' || name === 'prep');
+  recalBtn.classList.toggle('on', name === 'title');
+}
+
+// ── Start flow + director ────────────────────────────────────────────
+function onStart() {
+  if (!playing || flow !== 'idle') return;
+  playOneShot(buffers.scream);
+  playOneShot(buffers.squeal);
+
+  const now = actx.currentTime;
+  spinnerUntil      = now + 0.9;                       // brief spinner, then GET READY
+  countdownBoundary = nextBoundary(spinnerUntil + 0.8); // next downbeat after that
+  actionTime        = countdownBoundary + measureLength;
+  lastCountBeat     = -1;
+
+  // Look ahead from the current spot to the next drum-fill measure that still
+  // has a free "Get Ready" measure before it (≥2 ahead, wraps), then queue it.
+  const dropMeasure = nextDrumFill(currentContentMeasure());
+  swapToMeasure(dropMeasure, countdownBoundary);
+  playOneShot(buffers.riser, countdownBoundary);       // riser lands on the fill downbeat
+
+  flow = 'spinner';
+  spinner.classList.add('show');
+  startWrap.style.display = 'none';
+  recalBtn.classList.remove('on');
+}
+
+function enterPrep() {
+  spinner.classList.remove('show');
+  showScreen('prep');
+  dropText('GET READY TO SCREAM!!');
+  flow = 'prep';
+}
+
+function enterAction() {
+  showScreen('action');
+  flow = 'action';
+  peakScore = SCORE_MIN;
+  dispNorm = 0;
+  lastTick = -1;
+  actionStartCtx = actx.currentTime;
+  clearScraps();
+}
+
+function finishAction() {
+  flow = 'results';
+  finalScore.innerHTML = peakScore + '<small> dB</small>';
+  showScreen('results');
+}
+
+function actionStep() {
+  const remain = Math.max(0, SCREAM_SECONDS - (actx.currentTime - actionStartCtx));
+
+  const inst = levelFrom(readDbfs());
+  if (inst.score > peakScore) peakScore = inst.score;
+
+  // smooth fill: fast attack, slower release (reads cleanly on a TV)
+  const k = inst.norm > dispNorm ? 0.5 : 0.12;
+  dispNorm += (inst.norm - dispNorm) * k;
+  setFill(actFill, dispNorm);
+  dbFill.style.height = (dispNorm * 100) + '%';   // left 0–130 dB bar reacts to loudness
+
+  // band → subdivision; update number/message/pulse only on subdivision ticks
+  const band = inst.norm < 0.25 ? 0 : inst.norm < 0.5 ? 1 : inst.norm < 0.75 ? 2 : 3;
+  const subdiv = BAND_SUBDIV[band];
+  const tickIndex = Math.floor(songTime() / (BEAT / subdiv));
+  if (tickIndex !== lastTick) {
+    lastTick = tickIndex;
+    actScore.innerHTML = inst.score + '<small> dB</small>';
+    actMsg.textContent = BAND_MSGS[band];
+    actionMeter.classList.add('pulse');
+    setTimeout(() => actionMeter.classList.remove('pulse'), 110);
+  }
+
+  timerFill.style.width = (remain / SCREAM_SECONDS * 100) + '%';
+  timerNum.textContent = Math.ceil(remain);
+
+  if (remain <= 0) finishAction();
+}
+
+// Master loop: runs while music plays; dispatches by flow state (ctx time).
+function loop() {
+  rafId = requestAnimationFrame(loop);
+  if (!playing) return;
+  const now = actx.currentTime;
+
+  if (flow === 'spinner') {
+    if (now >= spinnerUntil) enterPrep();
+  } else if (flow === 'prep') {
+    if (now >= countdownBoundary) { flow = 'count'; lastCountBeat = -1; }
+  }
+
+  if (flow === 'count') {
+    const cb = Math.floor((now - countdownBoundary) / BEAT);   // 0..3 within the fill measure
+    if (cb >= 0 && cb <= 3 && cb !== lastCountBeat) {
+      lastCountBeat = cb;
+      dropBeat(COUNT_WORDS[cb]);
+    }
+    if (now >= actionTime) enterAction();
+  } else if (flow === 'action') {
+    actionStep();
+  }
+}
+
+// ── Modal flow ───────────────────────────────────────────────────────
+// OK → request mic permission (inside the gesture so mobile shows the prompt)
+// → start the music → auto-open calibration.
+okBtn.addEventListener('click', async () => {
+  if (actx && actx.state === 'suspended') actx.resume();  // resume in-gesture (no await)
+  await requestMic();          // fire getUserMedia first, inside the tap (iOS needs this)
+  await audioReady;            // make sure the loop is decoded before we (later) start it
+  ensureMicGraph();
+  micModal.classList.remove('show');
+  runCalibration(true);        // music starts only after calibration completes
+});
+calClose.addEventListener('click', () => {
+  calOverlay.classList.remove('show');
+  finishCalibration();
+});
+recalBtn.addEventListener('click', () => runCalibration(false));
+startBtn.addEventListener('click', onStart);
+backBtn.addEventListener('click', () => {
+  playOneShot(buffers.scream);
+  playOneShot(buffers.squeal);
+  flow = 'idle';
+  clearScraps();
+  showScreen('title');
+  startWrap.style.display = '';
+});
+
+// hide a bg <video> if it can't load — the jpg fallback shows underneath
+document.querySelectorAll('.bgvid').forEach(v => {
+  v.addEventListener('error', () => { v.style.display = 'none'; });
+});
+
+// ── Boot ─────────────────────────────────────────────────────────────
+calFill = buildMeter(calMeter, 'cal');
+actFill = buildMeter(actionMeter, 'act');
+const audioReady = initAudio();   // create context + decode buffers up front (no sound until a gesture)
+</script>
+</body>
+</html>
