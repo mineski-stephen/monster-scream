@@ -49,8 +49,10 @@
     background: #000;
     container-type: size;   /* enables cq* units so text scales to the stage box */
   }
-  @media (max-aspect-ratio: 9/16) {
-    #stage { width: 100vw; height: auto; }
+  /* Portrait displays: fill the whole viewport and let content flow so
+     nothing gets clipped. Landscape displays keep the locked 9:16 stage. */
+  @media (orientation: portrait) {
+    #stage { width: 100vw; height: 100vh; aspect-ratio: auto; max-width: none; }
   }
 
   /* ── Background layers (one per screen) ────────────────────────── */
@@ -70,7 +72,7 @@
   .bg-layer video { opacity: 0.9; }
 
   /* ── "Fence" frame from bg-border.png segments (title screen) ──── */
-  #fence { position: absolute; inset: 0; z-index: 6; display: none; pointer-events: none; }
+  #fence { position: absolute; inset: 1.8vh; z-index: 6; display: none; pointer-events: none; }
   #fence.on { display: block; }
   .fence-h, .fence-v { position: absolute; }
   .fence-h {
@@ -126,7 +128,7 @@
     width: 38%;
     max-width: 300px;
     z-index: 30;
-    filter: drop-shadow(0 14px 18px rgba(0,0,0,0.95)) drop-shadow(0 0 6px rgba(0,0,0,0.9));
+    filter: drop-shadow(0 14px 18px rgba(0,0,0,1)) drop-shadow(0 4px 7px rgba(0,0,0,1)) drop-shadow(0 0 4px rgba(0,0,0,1));
     pointer-events: none;
     display: none;
   }
@@ -151,6 +153,22 @@
     letter-spacing: 0.01em;
     text-transform: uppercase;
     text-shadow: 0 6px 14px rgba(0,0,0,0.85), 0 0 2px #000;
+  }
+
+  /* Metallic (brushed-steel) text fill + subtle bevel */
+  .metallic {
+    background: linear-gradient(180deg,
+      #ffffff 0%, #d7dee3 20%, #9aa2a8 40%,
+      #ffffff 50%, #7c848b 60%, #c4ccd2 80%, #ffffff 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    -webkit-text-stroke: 0.4px rgba(0,0,0,0.35);
+    text-shadow: none;   /* dark base text-shadow would swamp the clipped gradient */
+    filter:
+      drop-shadow(0 2px 1px rgba(0,0,0,0.95))
+      drop-shadow(0 4px 6px rgba(0,0,0,0.85))
+      drop-shadow(0 8px 14px rgba(0,0,0,0.7))
+      drop-shadow(0 0 3px rgba(0,0,0,0.9));
   }
 
   /* ── Title screen ──────────────────────────────────────────────── */
@@ -207,8 +225,8 @@
   #startBtn:active, #backBtn:active { transform: scale(0.98); }
   #startBtn .label  { font-size: 6vh; }
 
-  /* bottom "recalibrate" button — opens calibration any time */
-  #recalBtn {
+  /* bottom "settings" button — opens the settings overlay */
+  #settingsBtn {
     position: absolute; bottom: 3%; left: 50%;
     transform: translateX(-50%);
     z-index: 20; display: none;
@@ -222,8 +240,12 @@
     cursor: pointer;
     transition: color .15s, border-color .15s;
   }
-  #recalBtn.on { display: block; }
-  #recalBtn:hover { color: var(--green); border-color: var(--green); }
+  #settingsBtn.on { display: block; }
+  #settingsBtn:hover { color: var(--green); border-color: var(--green); }
+
+  /* settings overlay rows + toggle states */
+  .settings-rows { display: flex; flex-direction: column; gap: 2.2vh; align-items: stretch; margin-bottom: 1vh; }
+  .mini-btn.toggle.off { background: #23251c; color: #9aa08c; }
 
   /* ── Prepare screen ────────────────────────────────────────────── */
   #screen-prep { justify-content: center; }
@@ -270,48 +292,93 @@
 
   /* ── Action screen ─────────────────────────────────────────────── */
   #screen-action { justify-content: center; padding-top: 8%; }
+  /* Cookie-clicker mode (no usable mic): hide the dB meter, invite taps */
+  #screen-action.clicker { cursor: pointer; }
+  #screen-action.clicker #dbMeter { display: none; }
 
-  /* left dB meter: 0→130, gradient green/yellow/red, fill reacts to loudness */
+  /* left dB meter: instantaneous loudness 0→130, RECTANGULAR, on a dark-gray panel */
   #dbMeter {
-    position: absolute; left: 5%; top: 50%;
+    position: absolute; left: 4%; top: 50%;
     transform: translateY(-50%);
-    width: 6.5%; height: 56vh; z-index: 12;
+    z-index: 12;
+    display: flex; align-items: stretch; gap: 1.2vh;
+    padding: 1.4vh 1.2vh;
+    background: #2a2c26;                       /* dark gray backing panel */
+    border: 0.3vh solid rgba(0,0,0,0.6);
+    box-shadow: 0 0 18px rgba(0,0,0,0.7), inset 0 0 12px rgba(0,0,0,0.5);
+    /* rectangular: no border-radius */
   }
   .db-track {
-    position: absolute; inset: 0; overflow: hidden;
-    border-radius: 99px; background: #14160f;
-    box-shadow: inset 0 0 0 0.4vh rgba(255,255,255,0.14), 0 0 16px rgba(0,0,0,0.6);
+    position: relative; width: 3.2vh; height: 44vh; overflow: hidden;
+    background: #14160f;
+    box-shadow: inset 0 0 0 0.3vh rgba(255,255,255,0.14);
   }
   .db-fill {                       /* clip window, grows bottom-up (JS sets height) */
     position: absolute; left: 0; right: 0; bottom: 0;
     height: 0; overflow: hidden;
   }
-  .db-fill-inner {                 /* full-meter-height gradient → absolute dB colors */
-    position: absolute; left: 0; right: 0; bottom: 0; height: 56vh;
+  .db-fill-inner {                 /* full-track gradient → absolute dB colors */
+    position: absolute; left: 0; right: 0; bottom: 0; height: 44vh;
     background: linear-gradient(to top, #19e84a 0%, #ffe000 50%, #ff2a2a 100%);
   }
+  /* 13 segments (10 dB each) over 0..130 → divider lines, period 100%/13 */
+  .db-segments {
+    position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    background: repeating-linear-gradient(
+      to top,
+      transparent 0,
+      transparent calc(100% / 13 - 1.4px),
+      rgba(0,0,0,0.6) calc(100% / 13 - 1.4px),
+      rgba(0,0,0,0.6) calc(100% / 13)
+    );
+  }
   .db-ticks {
-    position: absolute; left: 100%; top: 0; bottom: 0; margin-left: 1vh;
-    display: flex; flex-direction: column; justify-content: space-between;
-    font-family: 'AntonSC', sans-serif; font-size: 1.7vh; color: #fff;
-    opacity: 0.85; white-space: nowrap; text-shadow: 0 2px 4px #000;
+    display: flex; flex-direction: column-reverse;   /* 0 at bottom, 130 at top */
+    justify-content: space-between; align-items: flex-start;
+    height: 44vh;
+    font-family: 'AntonSC', sans-serif; font-size: 1.4vh; color: #fff;
+    opacity: 0.9; white-space: nowrap; line-height: 1;
+    text-shadow: 0 2px 4px #000;
   }
   #actMsg {
     font-family: 'AntonSC', sans-serif;
-    font-size: 7vh; text-transform: uppercase; color: #fff;
-    text-shadow: 0 0 18px var(--green-glow), 0 6px 12px rgba(0,0,0,0.85);
-    margin-bottom: 2vh; min-height: 8vh;
+    font-size: 5.2vh; text-transform: uppercase;
+    margin-bottom: 1.6vh;
     line-height: 0.95;
+    /* FIXED height for up to 2 lines so a 1- or 2-line message occupies the
+       same box → the monster logo below never shifts. */
+    height: 12vh;
+    display: flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; overflow: hidden;
+    padding: 0 2%;
   }
   #actionMeter {
     position: relative;
-    width: 70%; flex: 1;
+    width: 86%; flex: 1;            /* larger logo (was 70%) */
     display: flex; align-items: center; justify-content: center;
-    filter: drop-shadow(0 0 24px rgba(0,0,0,0.7));
-    transition: transform .08s ease-out, filter .08s ease-out;
+    /* thick, near-opaque BLACK outer glow hugging the silhouette: stacked tight
+       opaque layers build to solid black at the edge, softer layers add a halo */
+    filter:
+      drop-shadow(0 0 2px #000)
+      drop-shadow(0 0 4px #000)
+      drop-shadow(0 0 6px #000)
+      drop-shadow(0 0 10px rgba(0,0,0,0.96))
+      drop-shadow(0 0 16px rgba(0,0,0,0.85));
+    transition: filter .12s ease-out;   /* no transform → logo stays stationary */
   }
-  #actionMeter.pulse { transform: scale(1.07); filter: drop-shadow(0 0 34px var(--green-glow)) brightness(1.18); }
-  #actionMeter svg { width: 100%; height: 100%; max-height: 52vh; }
+  /* beat pulse: glow/brightness only (no transform), keeps the full black hug */
+  #actionMeter.pulse {
+    filter:
+      drop-shadow(0 0 2px #000)
+      drop-shadow(0 0 4px #000)
+      drop-shadow(0 0 6px #000)
+      drop-shadow(0 0 10px rgba(0,0,0,0.96))
+      drop-shadow(0 0 16px rgba(0,0,0,0.85))
+      drop-shadow(0 0 40px var(--green-glow))
+      brightness(1.16);
+  }
+  #actionMeter svg { width: 100%; height: 100%; max-height: 60vh; }  /* larger (was 52vh) */
+  #actionMeter svg .ink-drip { stroke: none; }
   #actScore {
     font-family: 'AntonSC', sans-serif;
     font-size: 9vh; color: var(--green);
@@ -358,6 +425,12 @@
     text-shadow: 0 0 26px var(--green-glow);
   }
   #finalScore small { font-size: 4vh; color: #fff; }
+  #peakDbLine {
+    font-family: 'AntonSC', sans-serif;
+    font-size: 2.6vh; letter-spacing: 0.06em; text-transform: uppercase;
+    color: #fff; opacity: 0.8; margin-top: 0.8vh;
+    text-shadow: 0 2px 4px #000;
+  }
   #backWrap { display: inline-block; width: 74%; max-width: 360px; animation: floatY 2.6s ease-in-out infinite; }
   #backBtn { width: 100%; }
   #backBtn .label { font-size: 3.4vh; }
@@ -451,12 +524,15 @@
   <!-- ── Action ─────────────────────────────────────────────────── -->
   <section id="screen-action" class="screen">
     <div id="dbMeter">
-      <div class="db-track"><div class="db-fill" id="dbFill"><div class="db-fill-inner"></div></div></div>
-      <div class="db-ticks"><span>130</span><span>65</span><span>0</span></div>
+      <div class="db-track">
+        <div class="db-fill" id="dbFill"><div class="db-fill-inner"></div></div>
+        <div class="db-segments"></div>
+      </div>
+      <div class="db-ticks"></div>
     </div>
-    <div id="actMsg">CAN'T HEAR YOU!</div>
+    <div id="actMsg" class="metallic">CAN'T HEAR YOU!</div>
     <div id="actionMeter"></div>
-    <div id="actScore">0<small> dB</small></div>
+    <div id="actScore">0<small> PTS</small></div>
     <div id="timerBar"><div id="timerFill"></div></div>
     <div id="timerNum">10</div>
   </section>
@@ -467,8 +543,9 @@
       <img class="board-bg" src="img/blackboard.png" alt="">
       <img class="res-logo" src="img/monster-large-noline.png" alt="Monster Energy">
       <div class="res-mid">
-        <div class="res-head">Max Scream<br><span class="accent">Detected!</span></div>
-        <div id="finalScore">0<small> dB</small></div>
+        <div class="res-head">Your<br><span class="accent">Score</span></div>
+        <div id="finalScore">0<small> PTS</small></div>
+        <div id="peakDbLine">Loudest: 0 dB</div>
       </div>
       <div id="backWrap">
         <button id="backBtn" class="paper-btn">
@@ -480,8 +557,8 @@
     </div>
   </section>
 
-  <!-- bottom recalibrate button (title only) -->
-  <button id="recalBtn" class="on">Recalibrate Mic</button>
+  <!-- bottom settings button (title only) -->
+  <button id="settingsBtn" class="on">Settings</button>
 
   <!-- ── Mic notice modal ───────────────────────────────────────── -->
   <div id="micModal" class="overlay show">
@@ -504,22 +581,51 @@
     </div>
   </div>
 
+  <!-- ── Settings overlay ───────────────────────────────────────── -->
+  <div id="settingsOverlay" class="overlay">
+    <div class="modal-card">
+      <h2>Settings</h2>
+      <div class="settings-rows">
+        <button id="setCalBtn" class="mini-btn">Calibrate Mic</button>
+        <button id="setMusicBtn" class="mini-btn toggle">Music: On</button>
+        <button id="setMicBtn" class="mini-btn toggle">Microphone: On</button>
+      </div>
+      <button id="setClose" class="mini-btn primary" style="margin-top:3vh">Done</button>
+    </div>
+  </div>
+
   <!-- ── Spinner (START → Prepare) ──────────────────────────────── -->
   <div id="spinner"><div class="spin-ring"></div></div>
 
 </div>
 
 <script>
+// ── Song configuration ───────────────────────────────────────────────
+// Each entry: { file, bpm, drumfills (1-based measures), riser }. Add more
+// songs here and point SONG at one to swap the backing track later.
+const SONGS = [
+  { file: 'audio/full.ogg', bpm: 100, drumfills: [4, 8, 17, 21, 33, 37, 42, 46, 50], riser: 'audio/riser.ogg' },
+];
+const SONG = SONGS[0];
+
+// ── Editable on-screen text ──────────────────────────────────────────
+const UI_TEXT = {
+  title:          'Scream\nMachine',       // main-menu title ("SCREAM MACHINE")
+  startButton:    'Start',                  // text inside the START button
+  prepareMessage: 'GET READY TO SCREAM!!',  // "Get Ready" message
+  backMenuButton: 'Main Menu',              // results-screen back button
+};
+
 // ── Config ───────────────────────────────────────────────────────────
-const AUDIO_LOOP   = 'audio/full.ogg';
-const AUDIO_RISER  = 'audio/riser.ogg';
+const AUDIO_LOOP   = SONG.file;
+const AUDIO_RISER  = SONG.riser;
 const AUDIO_SCREAM = 'audio/scream.ogg';
 const AUDIO_SQUEAL = 'audio/squeal.ogg';
 
-const AUDIO_BPM         = 100;
-const BEAT              = 60 / AUDIO_BPM;          // 0.6s per beat
+const AUDIO_BPM         = SONG.bpm;
+const BEAT              = 60 / AUDIO_BPM;          // seconds per beat
 const BEATS_PER_MEASURE = 4;
-const measureLength     = BEAT * BEATS_PER_MEASURE; // 2.4s
+const measureLength     = BEAT * BEATS_PER_MEASURE;
 
 const SCREAM_SECONDS = 10;
 const DB_FLOOR  = -60;     // default noise floor before calibration
@@ -531,16 +637,39 @@ const DB_REF    = 100;     // dBFS + DB_REF ≈ an SPL-style positive reading
 const MAX_DB    = 95;      // this loudness = 100% (top = 130 on the scale)
 const CEIL_DBFS = MAX_DB - DB_REF;   // -5 dBFS is the 100% ceiling
 
-// Drum-fill "touch points" (1-based measures) → stored 0-based.
-const TOUCH_POINTS_1 = [4, 8, 17, 21, 33, 37, 42, 46, 50];
+// Bucket mechanic (the action-screen monster is a tank that fills while loud).
+const BUCKET_THRESHOLD = 0.5;     // instantaneous loudness at/above which it fills
+const BUCKET_RISE      = 1 / 7;   // per second → ~7s of sustained loud fills 0→1
+const BUCKET_DECAY     = 1 / 9;   // per second → drains in ~9s of quiet
+
+// Loudness only registers once it's clearly ABOVE the calibrated ambient floor:
+// this deadzone (dB above the baseline) keeps ambient fluctuation reading as 0,
+// so the meter shows nothing at the calibration minimum.
+const MIC_DEADZONE_DB = 3;
+
+// Scoring: each quarter-beat the bucket "stays at" a level earns floor(level*10)
+// points (10% → 1pt, 20% → 2pts … 100% → 10pts); a decaying bucket loses 1pt.
+const QUARTER_BEAT = BEAT / 4;
+
+// One-time feature test for the gooey ink-drip SVG filter; degrade to a plain
+// rising fill if SVG filters aren't available.
+const GOO_OK = (function () {
+  try { return typeof SVGFEGaussianBlurElement !== 'undefined'; }
+  catch (_) { return false; }
+})();
+
+// Drum-fill "touch points" (1-based measures from SONG) → stored 0-based.
+const TOUCH_POINTS_1 = SONG.drumfills;
 const TOUCH_SET = new Set(TOUCH_POINTS_1.map(m => m - 1));
 
 const COUNT_WORDS = ['3', '2', '1', 'SCREAM!'];
-const BAND_MSGS   = ["CAN'T HEAR YOU!", "GET LOUD!", "MAXIMUM SCREAM!", "MONSTROUS!!"];
+const BAND_MSGS   = ["CANT HEAR YOU!", "GET LOUD!", "MAXIMUM SCREAM!", "MONSTROUS!!"];
+const CLICK_MSGS  = ["TAP FASTER!", "KEEP GOING!", "ON FIRE!", "UNSTOPPABLE!!"];
 const BAND_SUBDIV = [1, 1, 2, 4];   // pulses / refreshes per beat, per band
 
-// Monster logo paths (from img/monster.svg) — used for both fill meters.
-const MONSTER_PATHS = [
+// Monster logo paths — hardcoded FALLBACK; loadMonsterPaths() replaces these
+// with the live img/monster.svg geometry at boot. Used for both fill meters.
+let MONSTER_PATHS = [
   "m60 50c4.33-11.34 22.77-7.66 40-20 13.06 4.99 26.45-0.04 40-10 8.33 6.78 18.44 9.9 30 10 4.96 12.99 10.53 24.91 20 30-8.93 0.94-9.68 5.38-10 10-8.52 1.26-15.04 4.44-17.45 11.6 1.1 17.07 0.95 30.36 7.45 38.4-6.9 3.71-10.32 10.31-10 20-0.61 12.48-0.02 24.09 9.7 29.11-2.77 11.59 2.97 21.41 10.3 30.89-8.53 13.54-11.62 25.3 0 32.23-7.23 10.26-6.1 19.36 0 27.77-11.53 17.69-17.53 38.01-20 60-0.25 5.85 4.01 12.73 10 20-6.73 13.29-10.26 26.62-10 40 13.72 9.26-1.28 22.34 10 50-0.66 6.81-4.5 13.45-10 20 3.48-11.5 3.32-21.43 0-30-13.09-20.85-7.41-53.89-20-70 5.61-11.33 6.02-24.51 0-40l-10-10c4.61-7.1 8.3-13.89 10-20 4.87-12.5 4.21-25.62 0-39.15 3.05-11.7 3.47-22.18 0-30.85 0.28-15.08-2.88-28.5-10-40l-10-10c1-17.14 4.26-33.82 10-50 2.12-13.86 0.05-24.75-10-30-4.96-2.28 0.11-10.53 0-20-0.3-4.36-3.55-7.72-10-10h-40z",
   "m170 40l30-20h20c5.66-5.98 15.61-9.34 30-10 9.59-11.42 22.02 12.87 40 10-2.64 7.58 0.12 14.33 10 20l-20 10c7.28 6.64-10.53 14.68-10 30 0.26 10.54 2.77 20.68 10 30-6.15 5.3-9.67 11.88-10 20 8.35 2.14 12.01 8.52 10 20-6.92 11.15-10.13 22.18 0 32.77-8.48 7.19-6.84 20.61 0 37.23 7.34 20.85-35.74 21.49-20 110-17.34 56.06 7.23 48.4 0 70l-10 60-10 20c-7.87-14.47 5.45-32.43 0-40 3.4-15.43-1.32-24.3-10-30l10-20c-13.62-12.87-0.21-32.02-10-60v-20c-1.63-4.84-5.06-8.09-10-10 10.99-18.91 16.29-43.64 20-70 0.23-12.92-4.24-26.39-10-40 6.54-7.11 8.99-17.9 10-30-7.91-1.55-10.05-5.35-10-10 3.94-15.91 3.44-32.68 0-50l-10-10c4.66-23.71 5.99-44.49-10-50-14.27-2.15-27.42 2.29-40 10z",
   "m290 60l10-10c11.35-7.93 21.11-10.45 30-10 2.83-8.24 9.13-15.06 20-20 14.99 0.62 25.89 3.46 30 10-1.06 16.17 14.32 25.95 10 40 0.11 20.85-20.96 27.55-20 60-5.92 11.74-6 25.05 0 40 0 0 2.39 8.14-0.96 18.19-3.35 10.05 10.96 31.81 10.96 31.81 9.15 19.89-19.63 40.24-9.04 47.34 6.51 10.04 6.29 20.63 0.32 27.13-5.36 5.93-5.55 8.03-1.91 15.96 3.56 8.65 2.96 15.33-1.91 19.47-6.57 6.98 0.01 17.46 2.54 30.1-8.87 9.4-15.48 22.85-20 40v20l-10-30c0.77-12.05 12.66-17.45 7.98-24.68-12.33-9.42-9.75-18.5-3.83-22.34 2.59-2.7 8.28-9.51 3.19-17.55-7.16-13.56 5.06-22.82 2.66-35.43v-60l-3.94-21.06 3.94-18.94c-7.95-8.64-12.73-18.21-10-30 5.11-20-7.66-14.89-5.74-25.43 1.11-6.38 7.87-4.26 10.53-14.68-8.3-23.93 3.11-44.15-4.79-49.89-6.1-6.1-15.37-7.24-30 0-3.41-7.92-8.93-12.86-20-10z"
@@ -563,7 +692,12 @@ const brandTop   = document.getElementById('brandTop');
 const startWrap  = document.getElementById('startWrap');
 const startBtn   = document.getElementById('startBtn');
 const backBtn    = document.getElementById('backBtn');
-const recalBtn   = document.getElementById('recalBtn');
+const settingsBtn= document.getElementById('settingsBtn');
+const settingsOverlay = document.getElementById('settingsOverlay');
+const setCalBtn  = document.getElementById('setCalBtn');
+const setMusicBtn= document.getElementById('setMusicBtn');
+const setMicBtn  = document.getElementById('setMicBtn');
+const setClose   = document.getElementById('setClose');
 const scrapStage = document.getElementById('scrapStage');
 const actMsg     = document.getElementById('actMsg');
 const actionMeter= document.getElementById('actionMeter');
@@ -572,6 +706,7 @@ const timerFill  = document.getElementById('timerFill');
 const timerNum   = document.getElementById('timerNum');
 const dbFill     = document.getElementById('dbFill');
 const finalScore = document.getElementById('finalScore');
+const peakDbLine = document.getElementById('peakDbLine');
 const micModal   = document.getElementById('micModal');
 const okBtn      = document.getElementById('okBtn');
 const calOverlay = document.getElementById('calOverlay');
@@ -606,33 +741,122 @@ let lastCountBeat = -1;
 
 // action run
 let actionStartCtx = 0, peakScore = SCORE_MIN, dispNorm = 0, lastTick = -1;
+let clickerMode = false, clickCount = 0, clickEnergy = 0;
+let bucket = 0, score = 0, peakDb = 0, lastQuarterBeat = -1, lastStepCtx = 0, dispInst = 0;   // bucket + score + loudest dB + smoothed left-bar level
+
+// settings
+let musicMuted = false, micMuted = false;
 
 let calFill = null, actFill = null, calFromModal = false;
 let rafId = null;
 
 // ── Fill-meter SVG builder (Monster logo clip + green gradient) ──────
-function buildMeter(container, id) {
+// Build a fill meter: the Monster silhouette as a clip over a dark base + a
+// rising green "ink" rect. When withDrips is true, a fixed pool of drip
+// ellipses rides the ink surface and a gooey SVG filter (blur + alpha
+// threshold) melts overlapping blobs into a metaball "ink drip" look. Returns
+// { rect, drips, _seed } (drips=[] when disabled). Pixel-aligned by construction
+// because everything lives in the same 480-space + clipPath + viewBox.
+function buildMeter(container, id, withDrips) {
+  const clipId = id + '-clip', gradId = id + '-grad', gooId = id + '-goo';
+  const goo = withDrips && GOO_OK;
+
+  const filterMarkup = goo ? (
+    '<filter id="' + gooId + '" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">' +
+      '<feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>' +
+      '<feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="goo"/>' +
+      '<feBlend in="SourceGraphic" in2="goo"/>' +
+    '</filter>'
+  ) : '';
+
+  let drips = '';
+  if (withDrips) {
+    for (let i = 0; i < 6; i++) {
+      drips += '<ellipse class="ink-drip" cx="0" cy="480" rx="0" ry="0" fill="url(#' + gradId + ')"/>';
+    }
+  }
+
   container.innerHTML =
     '<svg viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' +
       '<defs>' +
-        '<clipPath id="' + id + '-clip">' + MONSTER_PATHS.map(d => '<path d="' + d + '"/>').join('') + '</clipPath>' +
-        '<linearGradient id="' + id + '-grad" x1="0" y1="1" x2="0" y2="0">' +
+        '<clipPath id="' + clipId + '">' + MONSTER_PATHS.map(d => '<path d="' + d + '"/>').join('') + '</clipPath>' +
+        '<linearGradient id="' + gradId + '" x1="0" y1="1" x2="0" y2="0">' +
           '<stop offset="0%" stop-color="#7bbf16"/>' +
           '<stop offset="60%" stop-color="#a6e22e"/>' +
           '<stop offset="100%" stop-color="#c4ff3d"/>' +
         '</linearGradient>' +
+        filterMarkup +
       '</defs>' +
-      '<g clip-path="url(#' + id + '-clip)">' +
+      '<g clip-path="url(#' + clipId + ')">' +
         '<rect x="0" y="0" width="480" height="480" fill="#1c1f17"/>' +
-        '<rect class="meter-fill" x="0" y="480" width="480" height="0" fill="url(#' + id + '-grad)"/>' +
+      '</g>' +
+      '<g clip-path="url(#' + clipId + ')"' + (goo ? ' filter="url(#' + gooId + ')"' : '') + '>' +
+        '<rect class="meter-fill" x="0" y="480" width="480" height="0" fill="url(#' + gradId + ')"/>' +
+        drips +
       '</g>' +
     '</svg>';
-  return container.querySelector('.meter-fill');
+
+  const svg = container.querySelector('svg');
+  return {
+    rect:  svg.querySelector('.meter-fill'),
+    drips: Array.from(svg.querySelectorAll('.ink-drip')),
+    _seed: Math.random() * 1000,
+  };
 }
-function setFill(rect, norm) {
-  const h = Math.max(0, Math.min(1, norm)) * 480;
-  rect.setAttribute('y', 480 - h);
-  rect.setAttribute('height', h);
+
+// Position the rising body (single source of truth for the level) and lay drip
+// blobs along the surface. Drips only ever hang DOWN into the ink (ry capped to
+// h/2 so the blob bottom never passes the fill bottom), so they read as ink
+// sagging from the surface and never visually lower the level.
+function setFill(meter, norm) {
+  const n = Math.max(0, Math.min(1, norm));
+  const h = n * 480;
+  const surfaceY = 480 - h;
+  meter.rect.setAttribute('y', surfaceY);
+  meter.rect.setAttribute('height', h);
+
+  if (!meter.drips || !meter.drips.length) return;
+  const t = (performance.now() / 1000) + meter._seed;
+  for (let i = 0; i < meter.drips.length; i++) {
+    const d = meter.drips[i];
+    if (h < 6) { d.setAttribute('rx', 0); d.setAttribute('ry', 0); continue; }
+    const baseX  = ((i + 0.5) / meter.drips.length) * 480;
+    const cx     = baseX + Math.sin(t * 0.7 + i * 1.7) * 14;
+    const phase  = (Math.sin(t * 1.3 + i * 2.1) + 1) * 0.5;   // 0..1
+    const drop   = 10 + phase * 26;
+    const ry     = Math.min(drop, h / 2);                     // stay attached to the surface
+    const rx     = 9 + Math.sin(t * 0.9 + i) * 3;
+    d.setAttribute('cx', cx.toFixed(1));
+    d.setAttribute('cy', (surfaceY + ry).toFixed(1));
+    d.setAttribute('rx', rx.toFixed(1));
+    d.setAttribute('ry', ry.toFixed(1));
+  }
+}
+
+// Fetch the monster silhouette from img/monster.svg and use its path geometry.
+// Falls back silently to the hardcoded paths on any failure. Skips rebuilding
+// the meters when the file is geometry-identical (avoids a mid-round SVG wipe).
+async function loadMonsterPaths() {
+  try {
+    const res = await fetch('img/monster.svg', { cache: 'force-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const doc = new DOMParser().parseFromString(await res.text(), 'image/svg+xml');
+    if (doc.querySelector('parsererror')) throw new Error('parse error');
+    const ds = Array.from(doc.querySelectorAll('path')).map(p => p.getAttribute('d')).filter(Boolean);
+    if (ds.length && ds.join('|') !== MONSTER_PATHS.join('|')) {
+      MONSTER_PATHS = ds;
+      rebuildMeters();
+    }
+  } catch (e) {
+    console.warn('monster.svg load failed; using built-in paths:', e.message);
+  }
+}
+// Rebuild both meters from the current MONSTER_PATHS and reassign the refs
+// (old elements + drip nodes are detached by innerHTML, so callers must use the
+// reassigned objects — setFill reads meter.rect/drips fresh each call).
+function rebuildMeters() {
+  calFill = buildMeter(calMeter, 'cal', false);
+  actFill = buildMeter(actionMeter, 'act', true);
 }
 
 // ── Audio engine (Web Audio buffer loop, ported from audio.html) ─────
@@ -678,6 +902,7 @@ function startMusic() {
   posStartTime = musicStartTime;
   posStartOffset = 0;
   playing = true;
+  applyMusicGain();   // honor the settings mute toggle if set before music started
   rafId = requestAnimationFrame(loop);
 }
 
@@ -713,8 +938,12 @@ function playOneShot(buf, when) {
   s.start(when == null ? actx.currentTime : Math.max(actx.currentTime, when));
 }
 
-function muteMusic()   { if (gainNode) gainNode.gain.value = 0; }
-function unmuteMusic() { if (gainNode) gainNode.gain.value = MUSIC_VOL; }
+function applyMusicGain() { if (gainNode) gainNode.gain.value = musicMuted ? 0 : MUSIC_VOL; }
+function setMusicMuted(v)  { musicMuted = v; applyMusicGain(); }
+function setMicMuted(v)    { micMuted = v; }
+// Usable mic = granted, graph built, and not muted in settings. Otherwise the
+// Action screen falls back to the tap-clicker game.
+function canUseMic()      { return micReady && !!analyser && !micMuted; }
 
 // Next beat-aligned measure boundary at or after time `t`.
 function nextBoundary(t) {
@@ -778,9 +1007,11 @@ function readDbfs() {
 // Map dBFS to a 0..1 level using the calibrated baseline as "0".
 function levelFrom(dbfs) {
   if (!isFinite(dbfs)) return { norm: 0, score: SCORE_MIN };
-  const floorDb = micBaseline;
-  // 100% (top) when the mic reaches ~95 dB (CEIL_DBFS), measured from the
-  // calibrated silence floor — not at full digital scale.
+  // Floor sits a small deadzone ABOVE the calibrated ambient baseline, so the
+  // meter only starts tracking once the sound is clearly above calibration
+  // (nothing shows at/below the ambient minimum).
+  const floorDb = micBaseline + MIC_DEADZONE_DB;
+  // 100% (top) when the mic reaches ~95 dB (CEIL_DBFS), measured from that floor.
   const norm = Math.max(0, Math.min(1, (dbfs - floorDb) / (CEIL_DBFS - floorDb)));
   const score = Math.round(SCORE_MIN + norm * (SCORE_MAX - SCORE_MIN));
   return { norm, score };
@@ -823,7 +1054,6 @@ async function runCalibration(fromModal) {
   calCaption.style.display = '';
   setFill(calFill, 0);
   calOverlay.classList.add('show');
-  muteMusic();   // keep the booth quiet so calibration reads true ambient noise
 
   if (actx && actx.state === 'suspended') await actx.resume();
   if (!micReady) await requestMic();
@@ -843,17 +1073,16 @@ async function runCalibration(fromModal) {
   finishCalibration();
 }
 
-// Called when the calibration screen closes (success or denial): the bgm
-// begins here, so on page load the music starts right after calibration.
+// Called when the calibration screen closes (success or denial). The music is
+// already playing (it starts the moment the mic modal closes), so this just
+// reveals the title UI.
 function finishCalibration() {
-  unmuteMusic();
-  startMusic();   // no-op if already playing (e.g. mid-session recalibration)
   revealTitle();
 }
 
 function revealTitle() {
   startWrap.style.display = '';
-  recalBtn.classList.add('on');
+  settingsBtn.classList.add('on');
 }
 
 // ── Paper-scrap text engine (ported, local AntonSC) ──────────────────
@@ -915,7 +1144,7 @@ function showScreen(name) {
   fence.classList.toggle('on', name === 'title');
   vignette.classList.toggle('on', name !== 'title');
   brandTop.classList.toggle('on', name === 'title' || name === 'prep');
-  recalBtn.classList.toggle('on', name === 'title');
+  settingsBtn.classList.toggle('on', name === 'title');
 }
 
 // ── Start flow + director ────────────────────────────────────────────
@@ -939,13 +1168,13 @@ function onStart() {
   flow = 'spinner';
   spinner.classList.add('show');
   startWrap.style.display = 'none';
-  recalBtn.classList.remove('on');
+  settingsBtn.classList.remove('on');
 }
 
 function enterPrep() {
   spinner.classList.remove('show');
   showScreen('prep');
-  dropText('GET READY TO SCREAM!!');
+  dropText(UI_TEXT.prepareMessage);
   flow = 'prep';
 }
 
@@ -955,35 +1184,101 @@ function enterAction() {
   peakScore = SCORE_MIN;
   dispNorm = 0;
   lastTick = -1;
+  bucket = 0; score = 0; peakDb = 0; lastQuarterBeat = -1; lastStepCtx = 0; dispInst = 0;
   actionStartCtx = actx.currentTime;
   clearScraps();
+
+  // No usable mic (denied / unsupported / muted in settings) → tap-clicker game.
+  clickerMode = !canUseMic();
+  clickCount = 0;
+  clickEnergy = 0;
+  screens.action.classList.toggle('clicker', clickerMode);
+  if (clickerMode) {
+    actMsg.textContent = 'TAP LIKE CRAZY!';
+    actScore.innerHTML = '0<small> TAPS</small>';
+  } else {
+    actMsg.textContent = BAND_MSGS[0];
+    actScore.innerHTML = '0<small> PTS</small>';
+  }
 }
 
 function finishAction() {
   flow = 'results';
-  finalScore.innerHTML = peakScore + '<small> dB</small>';
+  const unit = clickerMode ? ' TAPS' : ' PTS';
+  finalScore.innerHTML = peakScore + '<small>' + unit + '</small>';
+  // Loudest dB reached this round (mic mode only; no dB in the tap fallback).
+  if (clickerMode) {
+    peakDbLine.style.display = 'none';
+  } else {
+    peakDbLine.style.display = '';
+    peakDbLine.textContent = 'Max Scream: ' + peakDb + ' dB';
+  }
   showScreen('results');
 }
 
 function actionStep() {
-  const remain = Math.max(0, SCREAM_SECONDS - (actx.currentTime - actionStartCtx));
+  const now    = actx.currentTime;
+  const remain = Math.max(0, SCREAM_SECONDS - (now - actionStartCtx));
+  const dt = lastStepCtx ? Math.min(0.1, Math.max(0, now - lastStepCtx)) : 0;  // real seconds since last frame
+  lastStepCtx = now;
 
+  // ── Cookie-clicker mode: score = total taps; the logo fills as a mash meter ──
+  if (clickerMode) {
+    clickEnergy = Math.max(0, clickEnergy - 0.012);   // decays each frame
+    dispNorm += (clickEnergy - dispNorm) * 0.4;
+    setFill(actFill, dispNorm);
+
+    const band = clickEnergy < 0.25 ? 0 : clickEnergy < 0.5 ? 1 : clickEnergy < 0.75 ? 2 : 3;
+    const subdiv = BAND_SUBDIV[band];
+    const tickIndex = Math.floor(songTime() / (BEAT / subdiv));
+    if (tickIndex !== lastTick) {
+      lastTick = tickIndex;
+      actMsg.textContent = CLICK_MSGS[band];
+    }
+    peakScore = clickCount;
+
+    timerFill.style.width = (remain / SCREAM_SECONDS * 100) + '%';
+    timerNum.textContent = Math.ceil(remain);
+    if (remain <= 0) finishAction();
+    return;
+  }
+
+  // ── Mic mode: the monster is a BUCKET — fills while loud, decays while quiet ──
   const inst = levelFrom(readDbfs());
-  if (inst.score > peakScore) peakScore = inst.score;
+  const filling = inst.norm >= BUCKET_THRESHOLD;
+  if (inst.score > peakDb) peakDb = inst.score;   // track the loudest instantaneous reading
 
-  // smooth fill: fast attack, slower release (reads cleanly on a TV)
-  const k = inst.norm > dispNorm ? 0.5 : 0.12;
-  dispNorm += (inst.norm - dispNorm) * k;
+  if (filling) {
+    bucket = Math.min(1, bucket + BUCKET_RISE * dt);   // ≥50% loud → only ever rises
+  } else {
+    bucket = Math.max(0, bucket - BUCKET_DECAY * dt);  // <50% → decays toward empty
+  }
+
+  // Score per quarter-beat: gain floor(bucket*10) points while filling/held
+  // (10% → 1pt … 100% → 10pts), or lose 1 point while the bucket is decaying.
+  const qb = Math.floor(songTime() / QUARTER_BEAT);
+  if (qb !== lastQuarterBeat) {
+    lastQuarterBeat = qb;
+    score = Math.max(0, score + (filling ? Math.floor(bucket * 10) : -1));
+    peakScore = score;
+    actScore.innerHTML = score + '<small> PTS</small>';
+  }
+
+  // Left bar = INSTANTANEOUS loudness (lightly smoothed) so the 50% line reads steady.
+  dispInst += (inst.norm - dispInst) * 0.35;
+  dbFill.style.height = (dispInst * 100) + '%';
+
+  // Monster = accumulated bucket (eases up fast, follows the decay down).
+  dispNorm += (bucket - dispNorm) * (bucket > dispNorm ? 0.5 : 0.2);
   setFill(actFill, dispNorm);
-  dbFill.style.height = (dispNorm * 100) + '%';   // left 0–130 dB bar reacts to loudness
 
-  // band → subdivision; update number/message/pulse only on subdivision ticks
-  const band = inst.norm < 0.25 ? 0 : inst.norm < 0.5 ? 1 : inst.norm < 0.75 ? 2 : 3;
+  // band → message + pulse on subdivision ticks (the PTS readout updates per quarter-beat above).
+  // Message now reflects how full the BUCKET is, not the instantaneous loudness.
+  const band = bucket < 0.25 ? 0 : bucket < 0.5 ? 1 : bucket < 0.75 ? 2 : 3;
   const subdiv = BAND_SUBDIV[band];
   const tickIndex = Math.floor(songTime() / (BEAT / subdiv));
   if (tickIndex !== lastTick) {
     lastTick = tickIndex;
-    actScore.innerHTML = inst.score + '<small> dB</small>';
     actMsg.textContent = BAND_MSGS[band];
     actionMeter.classList.add('pulse');
     setTimeout(() => actionMeter.classList.remove('pulse'), 110);
@@ -1028,14 +1323,48 @@ okBtn.addEventListener('click', async () => {
   await audioReady;            // make sure the loop is decoded before we (later) start it
   ensureMicGraph();
   micModal.classList.remove('show');
-  runCalibration(true);        // music starts only after calibration completes
+  startMusic();                // music starts as soon as the modal closes
+  runCalibration(true);        // calibration runs with the music already playing
 });
 calClose.addEventListener('click', () => {
   calOverlay.classList.remove('show');
   finishCalibration();
 });
-recalBtn.addEventListener('click', () => runCalibration(false));
 startBtn.addEventListener('click', onStart);
+
+// Cookie-clicker taps (only counted during a no-mic action round)
+function onActionClick() {
+  if (flow !== 'action' || !clickerMode) return;
+  clickCount++;
+  clickEnergy = Math.min(1, clickEnergy + 0.14);
+  actScore.innerHTML = clickCount + '<small> TAPS</small>';
+  actionMeter.classList.add('pulse');
+  setTimeout(() => actionMeter.classList.remove('pulse'), 90);
+}
+screens.action.addEventListener('pointerdown', onActionClick);
+
+// Spacebar = a tap in clicker mode (booth may use a keyboard/remote). Ignore
+// auto-repeat so a held key doesn't machine-gun taps; only consume Space when
+// it actually counts (so it stays free elsewhere).
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' && e.key !== ' ') return;
+  if (e.repeat || flow !== 'action' || !clickerMode) return;
+  e.preventDefault();
+  onActionClick();
+});
+
+// Settings overlay
+function updateSettingsUI() {
+  setMusicBtn.textContent = 'Music: ' + (musicMuted ? 'Off' : 'On');
+  setMusicBtn.classList.toggle('off', musicMuted);
+  setMicBtn.textContent = 'Microphone: ' + (micMuted ? 'Off' : 'On');
+  setMicBtn.classList.toggle('off', micMuted);
+}
+settingsBtn.addEventListener('click', () => { updateSettingsUI(); settingsOverlay.classList.add('show'); });
+setClose.addEventListener('click', () => settingsOverlay.classList.remove('show'));
+setCalBtn.addEventListener('click', () => { settingsOverlay.classList.remove('show'); runCalibration(false); });
+setMusicBtn.addEventListener('click', () => { setMusicMuted(!musicMuted); updateSettingsUI(); });
+setMicBtn.addEventListener('click', () => { setMicMuted(!micMuted); updateSettingsUI(); });
 backBtn.addEventListener('click', () => {
   playOneShot(buffers.scream);
   playOneShot(buffers.squeal);
@@ -1051,8 +1380,28 @@ document.querySelectorAll('.bgvid').forEach(v => {
 });
 
 // ── Boot ─────────────────────────────────────────────────────────────
-calFill = buildMeter(calMeter, 'cal');
-actFill = buildMeter(actionMeter, 'act');
+// Apply editable UI text.
+document.querySelector('#screen-title .title').innerHTML = UI_TEXT.title.replace(/\n/g, '<br>');
+startBtn.querySelector('.label').textContent = UI_TEXT.startButton;
+backBtn.querySelector('.label').textContent = UI_TEXT.backMenuButton;
+
+calFill = buildMeter(calMeter, 'cal', false);    // calibration meter: plain fill, no drips
+actFill = buildMeter(actionMeter, 'act', true);  // action meter: ink-drip bucket
+loadMonsterPaths();                              // async: swap to img/monster.svg geometry (fallback-safe)
+
+// dB tick labels: 0,10,…,130 (14 labels → 13 ten-dB segments). column-reverse
+// puts 0 at the bottom, 130 at the top.
+(function buildDbTicks() {
+  const ticks = document.querySelector('#dbMeter .db-ticks');
+  if (!ticks) return;
+  ticks.innerHTML = '';
+  for (let v = 0; v <= 130; v += 10) {
+    const s = document.createElement('span');
+    s.textContent = v;
+    ticks.appendChild(s);
+  }
+})();
+
 const audioReady = initAudio();   // create context + decode buffers up front (no sound until a gesture)
 </script>
 </body>
