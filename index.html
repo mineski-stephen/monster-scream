@@ -864,8 +864,8 @@ let musicMuted = false, micMuted = false;
 let bgmActionMode = 'silent';   // 'silent' | 'low' — bgm treatment during the action screen
 let musicDuck = 'normal';       // 'normal' | 'silent' | 'low' — live duck state
 
-// voice recording / playback
-let recorder = null, recChunks = [], recPlayer = null, recUrl = null;
+// voice recording / playback (decoded + played on the AudioContext for mobile)
+let recorder = null, recChunks = [], recSource = null, recGain = null;
 
 let calFill = null, actFill = null, calFromModal = false;
 let rafId = null;
@@ -1083,6 +1083,18 @@ function applyMusicGain() {
   musicFilter.frequency.setTargetAtTime(freq, actx.currentTime, 0.03);
 }
 function setMusicDuck(state) { musicDuck = state; applyMusicGain(); }
+// Hard-set the music to plain normal NOW (cancel any in-flight gain/filter
+// automation), so the recording playback runs over normal bgm with no leftover
+// fade/low-pass automation copied into it.
+function setMusicNormalImmediate() {
+  musicDuck = 'normal';
+  if (!musicGain || !actx) return;
+  const t = actx.currentTime;
+  musicGain.gain.cancelScheduledValues(t);
+  musicGain.gain.setValueAtTime(musicMuted ? 0 : MUSIC_VOL, t);
+  musicFilter.frequency.cancelScheduledValues(t);
+  musicFilter.frequency.setValueAtTime(BGM_OPEN_FREQ, t);
+}
 function setMusicMuted(v)  { musicMuted = v; applyMusicGain(); }
 function setMicMuted(v)    { micMuted = v; }
 // Usable mic = granted, graph built, and not muted in settings. Otherwise the
@@ -1099,24 +1111,36 @@ function startRecording() {
     recorder.start();
   } catch (_) { recorder = null; }
 }
-// Stop recording; if playBack, the take plays once when the data is ready.
+// Stop recording; if playBack, DECODE the take and play it through the
+// AudioContext. HTMLAudioElement.play() is gesture-gated on mobile and iOS
+// can't play webm — decoding into the (already-running) context avoids both.
 function stopRecording(playBack) {
   if (!recorder) return;
   if (recorder.state === 'inactive') { recorder = null; return; }
   recorder.onstop = () => {
-    const type = (recorder && recorder.mimeType) || 'audio/webm';
+    const type = (recorder && recorder.mimeType) || '';
     recorder = null;
-    if (!playBack || !recChunks.length) return;
-    if (recUrl) { try { URL.revokeObjectURL(recUrl); } catch (_) {} }
-    recUrl = URL.createObjectURL(new Blob(recChunks, { type }));
-    if (!recPlayer) recPlayer = new Audio();
-    recPlayer.src = recUrl;
-    recPlayer.play().catch(() => {});
+    if (!playBack || !recChunks.length || !actx) return;
+    const blob = new Blob(recChunks, type ? { type } : {});
+    blob.arrayBuffer()
+      .then(buf => actx.decodeAudioData(buf))
+      .then(audioBuf => playRecBuffer(audioBuf))
+      .catch(() => {});   // unsupported container / decode fail → no playback
   };
   try { recorder.stop(); } catch (_) { recorder = null; }
 }
+function playRecBuffer(audioBuf) {
+  stopPlayback();
+  if (!recGain) { recGain = actx.createGain(); recGain.gain.value = 1.0; recGain.connect(actx.destination); }
+  if (actx.state === 'suspended') actx.resume();
+  const s = actx.createBufferSource();
+  s.buffer = audioBuf;
+  s.connect(recGain);
+  s.start();
+  recSource = s;
+}
 function stopPlayback() {
-  if (recPlayer) { try { recPlayer.pause(); recPlayer.currentTime = 0; } catch (_) {} }
+  if (recSource) { try { recSource.stop(); } catch (_) {} try { recSource.disconnect(); } catch (_) {} recSource = null; }
 }
 
 // ── Daily leaderboard (localStorage, keyed by date → resets each day) ──
@@ -1469,9 +1493,10 @@ function enterAction() {
 function finishAction() {
   flow = 'results';
 
-  // The 4th-measure rewind (doRewind) already faded the bgm back to full and put
-  // it at the drum fill, which now carries forward (D → D+1 …). Just stop the
-  // recorder — the take plays back once over that full-volume bgm (mic mode).
+  // The 4th-measure rewind put the bgm at the drum fill; from here it just plays
+  // NORMALLY (carries D → D+1 …). Hard-normalize so no fade/low-pass automation
+  // bleeds into the playback, then play the take over the normal bgm (mic mode).
+  setMusicNormalImmediate();
   stopRecording(!clickerMode);
 
   const unit = clickerMode ? ' TAPS' : ' PTS';
