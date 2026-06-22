@@ -11,37 +11,42 @@ The game lives in **`index.html`**. Two tech-demo files document the engines it 
 ### Title screen
 - Black background with the `bg-menu.png` texture fit to the screen.
 - A **"fence" frame** built from the `bg-border.png` segment (1318×50), repeated around all four edges, inset slightly from the screen edge and scaling with the screen.
+- **Changelog on load:** a *What's New* card (the current version + recent changes) appears first; pressing **Continue** dismisses it to reveal the mic prompt behind it.
 - **Microphone-access notice modal** on load — just the title, the message, and an **OK** button. Pressing OK requests the browser/device microphone permission.
 - **The looping background music (`full.ogg`) starts the moment the mic modal closes** — it keeps playing even while calibration is running.
 - **Automatic calibration:** as soon as mic access is granted, the calibration screen pops up on its own. The `monster.svg` logo fills with green over 3 seconds, captioned "Stay silent while the microphone calibrates…". It averages 30 readings and sets that level as the baseline **0**, so the game works in loud booths. If access is denied it shows *"Could not calibrate. Microphone access denied."* and the title appears on close (the music is already playing).
-- **Floating START button** (`start.png`). Hovering zooms it slightly and adds a green tint that is **masked to the button's non-transparent pixels** (it never tints the transparent area), all while it keeps floating.
+- **Floating START button** (`start.png`). Hovering zooms it slightly and adds a green tint that is **masked to the button's non-transparent pixels** (it never tints the transparent area), all while it keeps floating. **Holding the spacebar** fills the button with green from the bottom up over 2 seconds and then launches the game — releasing early cancels and drains the fill (a hands-free alternative to tapping).
 - The **Monster logo** sits lower on the screen with a strong, near-black drop shadow; the **"Scream Machine"** title is plain white with a drop shadow.
-- A small **Settings** button is pinned to the bottom. It opens a settings card with: **Calibrate Mic** (re-runs calibration any time), a **Music** mute toggle, and a **Microphone** mute toggle.
+- A small **Settings** button is pinned to the bottom. It opens a settings card with: **Calibrate Mic** (re-runs calibration any time), a **Music** mute toggle, a **Microphone** mute toggle, an **Action BGM** toggle (**Silent** or **Low** — how the music behaves while you record; default **Silent**), a **Clear Leaderboard** button (wipes today's scoreboard after a confirmation prompt), and the current **version number**.
 
 ### Audio engine
 - The backing track is driven by a **song config** at the top of the script — a `SONGS` array of `{ file, bpm, drumfills, riser }` entries (e.g. `{ file: 'audio/full.ogg', bpm: 100, drumfills: [4, 8, 17, 21, 33, 37, 42, 46, 50], riser: 'audio/riser.ogg' }`). `SONG` points at the active entry; add more entries and repoint `SONG` to swap the track later.
 - The song file is decoded into a Web Audio buffer and looped with sample-accurate, **zero-gap** seamless playback.
 - A constant (inaudible) beat grid at the song's **BPM** runs across the whole loop, derived from the audio clock — everything in the game is timed to it.
-- **Touch points** (drum-fill measures that lead into a drop) come from the song's `drumfills` list, each reinforced with the song's riser.
+- **Touch points** (drum-fill measures that lead into a drop) come from the song's `drumfills` list. The drum fill is the countdown bed; the action records the measures right after it.
 - Pressing **START** looks ahead from the current spot to the **next drum-fill measure that still has a free "Get Ready" measure before it** (≥2 measures ahead, wrapping around the loop — e.g. at measure 9 → 17, at 36 → 42, at 49 → 4), then **queues it to play next** (a seamless measure swap), so the countdown always leads into a real drop. A short **spinner** plays, then the Prepare screen appears.
 - Tapping **START** fires `scream.ogg` and `squeal.ogg` together as a stinger.
+- **Two audio buses:** the music runs through a low-pass filter + gain that get **ducked during the action screen**; one-shots (scream/squeal/**riser**) run on a separate full, unfiltered bus so the riser always hits clean. The **riser plays alongside the final (4th) action measure**, building into the results (no riser on the countdown anymore).
 
 ### Prepare screen
 - Background: `halftone-loop.mp4` (with `halftone.jpg` as fallback); the Monster logo is retained.
 - The **"GET READY TO SCREAM!!"** message (paper-scrap letters falling in one by one) appears promptly after START — no long wait.
-- On the queued drum-fill measure, a beat-locked countdown drops on each beat: **3 · 2 · 1 · SCREAM!** The riser builds underneath and resolves into the drop, which starts the action.
+- On the queued drum-fill measure, a beat-locked countdown drops on each beat: **3 · 2 · 1 · SCREAM!** — which resolves into the drop that starts the action (no riser on the countdown anymore).
 
 ### Action screen
-- Background: `graffiti-loop.mp4` (with `graffiti.jpg` as fallback); no top Monster logo. Text uses **AntonSC**, with the loudness message in a brushed-metal gradient and a heavy drop-shadow. The message sits in a fixed-height box so the logo never shifts as the text changes.
+- Background: `graffiti-loop.mp4` (with `graffiti.jpg` as fallback); no top Monster logo. Text uses **Anton**, with the loudness message in a brushed-metal gradient and a heavy drop-shadow. The message sits in a fixed-height box so the logo never shifts as the text changes.
+- **You record over the track.** For the whole 4-measure action the mic input is recorded, and the BGM is ducked per the **Action BGM** setting — **Silent** (off) or **Low** (low-passed ~300 Hz at 70% volume). The lead-in skips to the measure *before* the drum fill (so "GET READY" plays over it), the drum fill carries the **3·2·1·SCREAM** countdown, then the next three measures are recorded. On the **4th (final) measure the BGM rewinds to that same drum-fill measure**, the **riser** hits alongside it, and the BGM **fades up to full volume over the measure** (Silent 0→100%, Low 70%→100% with the low-pass opening). The results then appear and **your take plays back** over the now-full music as it carries forward.
 - The large `monster.svg` icon (its paths loaded from the file at runtime, with a built-in fallback) is a **bucket** that **fills with green ink over time**: while your instantaneous loudness is **at or above 50%** the bucket **rises and never drops**; below 50% it **decays**. So the goal is to *sustain* a loud scream — go quiet and you start losing fill. The rising ink surface has a gooey **ink-drip** effect, and the silhouette carries a thick near-black outer glow. It pulses (glow only, no movement) on the beat.
 - A vertical **dB meter on the left** shows **instantaneous loudness** so you can see the 50% fill threshold. It's a rectangular meter on a dark-gray panel, divided into **13 segments (10 dB each) from 0 to 130**, with a gradient fill (green low → yellow mid → red high). It only registers sound **above the calibrated ambient floor** (plus a small deadzone), so it reads empty at the calibration minimum and only starts tracking once you're clearly louder than the room.
 - Hype messages escalate with how **full the bucket is** (not instantaneous loudness): **"CAN'T HEAR YOU!" (empty) → "GET LOUD!" → "MAXIMUM SCREAM!" → "MONSTROUS!!" (near full)**, refreshing **on the beat** (faster the fuller it gets — every beat → twice → four times per beat across the bands).
-- **Scoring (points):** every **quarter-beat**, the level the bucket "stays at" earns points — **floor(fill% ÷ 10)** per quarter-beat (0% → 0, 10% → 1, 20% → 2 … 100% → 10) while the bucket is filling or held, and **−1** per quarter-beat while it's decaying (never below 0). The running total is shown live as **PTS** under the logo. So you score fastest by filling the bucket high *and keeping it there*. A **10-second timer** runs the round, then the results appear.
-- **Cookie-clicker fallback:** when there is no usable microphone — access denied, an insecure/unsupported context, or the mic muted in Settings — the action screen becomes a **tap game** instead. The dB meter is hidden, the prompt reads **"TAP LIKE CRAZY!"**, and each tap (pointer **or spacebar**) counts toward a score (shown as **TAPS**) while filling the logo as a decaying mash-meter. The same 10-second timer applies.
+- **Scoring (points):** every **quarter-beat**, the level the bucket "stays at" earns points — **floor(fill% ÷ 10)** per quarter-beat (0% → 0, 10% → 1, 20% → 2 … 100% → 10) while the bucket is filling or held, and **−1** per quarter-beat while it's decaying (never below 0). The running total is shown live as **PTS** under the logo. So you score fastest by filling the bucket high *and keeping it there*. The round lasts **4 measures** (a measures-remaining countdown shows 4 → 1), then the results appear.
+- **Cookie-clicker fallback:** when there is no usable microphone — access denied, an insecure/unsupported context, or the mic muted in Settings — the action screen becomes a **tap game** instead. The dB meter is hidden, the prompt reads **"TAP LIKE CRAZY!"**, and each tap (pointer **or spacebar**) counts toward a score (shown as **TAPS**) while filling the logo as a decaying mash-meter. The same 4-measure round applies (no recording in this mode).
 
 ### Results screen
 - Background: `halftone-loop.mp4` (with `halftone.jpg` fallback) behind a `blackboard.png` scoreboard that fills almost the whole screen.
-- Headed **"Your Score"**, it shows the Monster logo, the final score (**PTS**, or **TAPS** after a clicker round), a small **"Loudest: N dB"** line beneath it (the highest instantaneous reading of the round; hidden in the tap fallback), and the floating **Main Menu** button — all **inside the blackboard**. Main Menu plays the scream/squeal stinger on press; the music keeps looping the whole time.
+- Headed **"Your Score"**, it shows the final score (**PTS**, or **TAPS** after a clicker round) and a small **"Max Scream: N dB"** line (the highest instantaneous reading of the round; hidden in the tap fallback), with your recorded take playing back over the full-volume music.
+- **Daily leaderboard:** the round is added to a **per-day** board kept in `localStorage` (keyed by date, so it resets each day), shown **highest → lowest** with your entry highlighted. An **editable name field** is pre-filled with a random default (**adjective + name**, e.g. *Nitro Claw*) — tap it to rename; the board updates live.
+- A floating **Main Menu** button returns to the title (stops the playback, restores the music). Everything sits **inside the blackboard**; the music keeps looping the whole time.
 
 ### Everywhere
 - A **vignette** darkens the edges on the Prepare, Action, and Results screens (not the menu).
@@ -84,7 +89,7 @@ Then open **http://localhost:8000/** in the browser.
 | `img/halftone-loop.mp4` / `img/halftone.jpg` | Prepare & Results background |
 | `img/graffiti-loop.mp4` / `img/graffiti.jpg` | Action background |
 | `audio/full.ogg` | Looping background music (58 bars @ 100 BPM) |
-| `audio/riser.ogg` | Riser on drum-fill measures |
+| `audio/riser.ogg` | Riser at the end of the round (hits as the results appear) |
 | `audio/scream.ogg`, `audio/squeal.ogg` | START stinger |
 | `fonts/boston.ttf` | Headers & titles |
-| `fonts/AntonSC-Regular.ttf` | Body / action / scrap-letter text |
+| `fonts/Anton-Regular.ttf` | Body / action / scrap-letter text |
