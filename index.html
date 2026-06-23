@@ -128,7 +128,6 @@
     width: 38%;
     max-width: 300px;
     z-index: 30;
-    filter: drop-shadow(0 14px 18px rgba(0,0,0,1)) drop-shadow(0 4px 7px rgba(0,0,0,1)) drop-shadow(0 0 4px rgba(0,0,0,1));
     pointer-events: none;
     display: none;
   }
@@ -285,6 +284,14 @@
   /* settings overlay rows + toggle states */
   .settings-rows { display: flex; flex-direction: column; gap: 2.2vh; align-items: stretch; margin-bottom: 1vh; }
   .mini-btn.toggle.off { background: #23251c; color: #9aa08c; }
+  /* settings number input (action length) */
+  .set-input-row { display: flex; align-items: center; justify-content: space-between; gap: 1.4vh;
+    font-family: 'Boston', sans-serif; text-transform: uppercase; font-size: 2.1vh; color: #fff;
+    background: #2a2d22; border-radius: 12px; padding: 1.1vh 2.6vh; }
+  .set-num-wrap { display: inline-flex; align-items: center; gap: 0.8vh; color: #9aa08c; }
+  .set-num { width: 7vh; font-family: 'Anton', sans-serif; font-size: 2.4vh; text-align: center;
+    background: #1c1e16; color: #fff; border: 2px solid #3a3d30; border-radius: 8px; padding: 0.7vh 0.4vh; }
+  .set-num:focus { outline: none; border-color: var(--green); }
   .version-line { margin-top: 2.4vh; font-family: 'Anton', sans-serif; font-size: 1.8vh;
     letter-spacing: 0.12em; text-transform: uppercase; color: #8a8f7a; }
   /* changelog modal */
@@ -549,8 +556,7 @@
   }
   .board-row .replay-btn .rp-glyph { position: relative; z-index: 1; }
   /* small Monster logo at the top of the results board */
-  #board .res-logo { width: 26%; max-width: 130px; flex: 0 0 auto;
-    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.85)); }
+  #board .res-logo { width: 26%; max-width: 130px; flex: 0 0 auto; }
   #backWrap { display: inline-block; width: 74%; max-width: 360px; animation: floatY 2.6s ease-in-out infinite; }
   #backBtn { width: 100%; }
   #backBtn .label { font-size: 3.4vh; }
@@ -624,7 +630,7 @@
   <div id="vignette"></div>
 
   <!-- Persistent Monster logo (title + prepare) -->
-  <img id="brandTop" class="on" src="img/monster-large-noline.png" alt="Monster Energy">
+  <img id="brandTop" class="on" src="img/monster-logo.png" alt="Monster Energy">
 
   <!-- ── Title ──────────────────────────────────────────────────── -->
   <section id="screen-title" class="screen active">
@@ -671,7 +677,7 @@
     <button id="leaderDownBtn" class="tri-btn down" aria-label="Back to menu"></button>
     <div id="board">
       <img class="board-bg" src="img/blackboard.png" alt="">
-      <img class="res-logo" src="img/monster-large-noline.png" alt="Monster Energy">
+      <img class="res-logo" src="img/monster-logo.png" alt="Monster Energy">
       <div class="res-head browse-head"><span class="accent">Leaderboard</span></div>
       <div class="round-only">
         <div class="res-head">Your <span class="accent">Score</span></div>
@@ -729,6 +735,10 @@
         <button id="setMusicBtn" class="mini-btn toggle">Music: On</button>
         <button id="setMicBtn" class="mini-btn toggle">Microphone: On</button>
         <button id="setBgmBtn" class="mini-btn toggle">Action BGM: Silent</button>
+        <div class="set-input-row">
+          <label for="setBarsInput">Action Length</label>
+          <span class="set-num-wrap"><input id="setBarsInput" class="set-num" type="number" min="1" max="32" step="1" inputmode="numeric"> bars</span>
+        </div>
         <button id="setMiniBtn" class="mini-btn toggle">dB Meter: Off</button>
         <button id="setIdleBtn" class="mini-btn toggle">Idle Leaderboard: On</button>
         <button id="setClearBtn" class="mini-btn">Clear Leaderboard</button>
@@ -819,10 +829,11 @@ const MIC_DEADZONE_DB = 3;
 // points (10% → 1pt, 20% → 2pts … 100% → 10pts); a decaying bucket loses 1pt.
 const QUARTER_BEAT = BEAT / 4;
 
-// The action screen now lasts a whole number of MEASURES (not seconds). The
-// player records over the bgm for this long; then a riser hits and the bgm
-// rewinds to the start of the recording for full-volume playback.
-const ACTION_MEASURES = 4;
+// The action screen lasts a whole number of MEASURES (bars), set in Settings
+// (default 2). The player records over the bgm for this long; then a riser hits
+// and the bgm rewinds to the start of the recording for full-volume playback.
+const ACTION_BARS_MIN = 1, ACTION_BARS_MAX = 32, ACTION_BARS_DEFAULT = 2;
+let actionBars = ACTION_BARS_DEFAULT;
 
 // Mic-input latency: the captured voice lags real time by this much, so the take
 // plays back slightly late. Drop this many ms from the FRONT of the take to
@@ -836,15 +847,9 @@ const BGM_LOW_VOL       = 0.70;   // volume factor for "BGM Low"
 const BGM_OPEN_FREQ     = 20000;  // filter fully open (no audible effect)
 
 // Version + changelog (changelog shown once per page load).
-const VERSION = 'v0.2.1';
+const VERSION = 'v0.2.2';
 const CHANGELOG = [
-  'Added leaderboards with default and editable names',
-  'BGM is silent/lowpassed during the action screen (can be set in settings)',
-  'Hold spacebar on main menu to start',
-  'Leaderboard can be viewed from main menu',
-  'Leaderboard screamers can be replayed',
-  'Mini dB meter on main menu (helps to see if mic works)',
-  'Bug fixes'
+  'Added setting to change number of bars in action screen. Set to 2 by default'
 ];
 
 // Daily leaderboard: random default names = adjective + name.
@@ -919,6 +924,7 @@ const peakDbLine = document.getElementById('peakDbLine');
 const nameInput  = document.getElementById('nameInput');
 const boardList  = document.getElementById('boardList');
 const setBgmBtn  = document.getElementById('setBgmBtn');
+const setBarsInput = document.getElementById('setBarsInput');
 const setMiniBtn = document.getElementById('setMiniBtn');
 const setIdleBtn = document.getElementById('setIdleBtn');
 const setClearBtn= document.getElementById('setClearBtn');
@@ -977,8 +983,14 @@ let musicDuck = 'normal';       // 'normal' | 'silent' | 'low' — live duck sta
 let miniDbOn = false;           // floating mini dB meter (off by default)
 let idleBoardOn = true;         // auto-summon leaderboard after 30s idle (on by default)
 const SETTINGS_KEY = 'scream-settings';
+// Coerce a stored/typed value into a valid whole number of action bars.
+function clampBars(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return ACTION_BARS_DEFAULT;
+  return Math.min(ACTION_BARS_MAX, Math.max(ACTION_BARS_MIN, n));
+}
 function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ musicMuted, micMuted, bgmActionMode, miniDbOn, idleBoardOn })); } catch (_) {}
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ musicMuted, micMuted, bgmActionMode, miniDbOn, idleBoardOn, actionBars })); } catch (_) {}
 }
 function loadSettings() {
   try {
@@ -988,6 +1000,7 @@ function loadSettings() {
       bgmActionMode = (s.bgmActionMode === 'low') ? 'low' : 'silent';
       miniDbOn = !!s.miniDbOn;
       idleBoardOn = (s.idleBoardOn !== false);   // default on
+      actionBars = clampBars(s.actionBars);
     }
   } catch (_) {}
 }
@@ -1265,7 +1278,7 @@ function startRecording() {
     recBlocks = [];
     recGot = 0;
     recSampleRate = actx.sampleRate;
-    recNeeded = Math.round(ACTION_MEASURES * measureLength * recSampleRate);
+    recNeeded = Math.round(actionBars * measureLength * recSampleRate);
     if (!recMicSrc) recMicSrc = actx.createMediaStreamSource(micStream);
     if (!recNode) {
       recNode = new AudioWorkletNode(actx, 'rec-processor',
@@ -1702,8 +1715,8 @@ function onStart() {
   prepBoundary      = nextBoundary(spinnerUntil);           // "GET READY" on the drum-fill-1 measure
   countdownBoundary = prepBoundary + measureLength;         // 3·2·1·SCREAM on the drum fill (D)
   actionTime        = countdownBoundary + measureLength;    // action starts the measure after (D+1)
-  rewindTime        = actionTime + (ACTION_MEASURES - 1) * measureLength;  // 4th measure → rewind to D
-  actionEndTime     = actionTime + ACTION_MEASURES * measureLength;        // results reveal
+  rewindTime        = actionTime + (actionBars - 1) * measureLength;  // last action measure → rewind to D
+  actionEndTime     = actionTime + actionBars * measureLength;        // results reveal
   lastCountBeat     = -1;
   riserFired        = false;
   rewindDone        = false;
@@ -1832,7 +1845,7 @@ function finishAction() {
 
 function actionStep() {
   const now    = actx.currentTime;
-  const total  = ACTION_MEASURES * measureLength;          // round length (4 measures)
+  const total  = actionBars * measureLength;          // round length (actionBars measures)
   const remain = Math.max(0, actionEndTime - now);
   const dt = lastStepCtx ? Math.min(0.1, Math.max(0, now - lastStepCtx)) : 0;  // real seconds since last frame
   lastStepCtx = now;
@@ -2028,6 +2041,7 @@ function updateSettingsUI() {
   setMiniBtn.classList.toggle('off', !miniDbOn);
   setIdleBtn.textContent = 'Idle Leaderboard: ' + (idleBoardOn ? 'On' : 'Off');
   setIdleBtn.classList.toggle('off', !idleBoardOn);
+  setBarsInput.value = actionBars;
 }
 settingsBtn.addEventListener('click', () => { updateSettingsUI(); settingsOverlay.classList.add('show'); });
 setClose.addEventListener('click', () => settingsOverlay.classList.remove('show'));
@@ -2037,6 +2051,11 @@ setMicBtn.addEventListener('click', () => { setMicMuted(!micMuted); saveSettings
 setBgmBtn.addEventListener('click', () => { bgmActionMode = (bgmActionMode === 'silent' ? 'low' : 'silent'); saveSettings(); updateSettingsUI(); });
 setMiniBtn.addEventListener('click', () => { miniDbOn = !miniDbOn; saveSettings(); updateMiniDb(); updateSettingsUI(); });
 setIdleBtn.addEventListener('click', () => { idleBoardOn = !idleBoardOn; saveSettings(); updateSettingsUI(); resetIdleTimer(); });
+setBarsInput.addEventListener('change', () => {
+  actionBars = clampBars(setBarsInput.value);   // round + clamp to [1, 32]
+  setBarsInput.value = actionBars;               // reflect the normalized value back
+  saveSettings();
+});
 
 // ── Leaderboard (the results screen) slide ────────────────────────────
 // 'round' = after a scream (shows the personal score block); 'browse' = summoned
