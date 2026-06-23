@@ -237,11 +237,15 @@
   #startBtn:active, #backBtn:active { transform: scale(0.98); }
   #startBtn .label  { font-size: 6vh; }
 
-  /* bottom "settings" button — opens the settings overlay */
-  #settingsBtn {
+  /* bottom bar (title): settings pill + leaderboard triangle */
+  #menuBottom {
     position: absolute; bottom: 3%; left: 50%;
     transform: translateX(-50%);
     z-index: 20; display: none;
+    align-items: center; gap: 2.2vh;
+  }
+  #menuBottom.on { display: flex; }
+  #settingsBtn {
     font-family: 'Anton', sans-serif;
     font-size: 1.9vh; letter-spacing: 0.12em; text-transform: uppercase;
     color: #d2d2d2;
@@ -252,8 +256,31 @@
     cursor: pointer;
     transition: color .15s, border-color .15s;
   }
-  #settingsBtn.on { display: block; }
   #settingsBtn:hover { color: var(--green); border-color: var(--green); }
+
+  /* triangular slide buttons (menu ↔ leaderboard); glow green on hover */
+  .tri-btn {
+    width: 0; height: 0; padding: 0; background: transparent; border: none; cursor: pointer;
+    border-left: 2.1vh solid transparent; border-right: 2.1vh solid transparent;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7)); transition: filter .15s;
+  }
+  .tri-btn.up   { border-bottom: 3vh solid #d2d2d2; }
+  .tri-btn.down { border-top: 3vh solid #d2d2d2; }
+  .tri-btn.up:hover   { border-bottom-color: var(--green); filter: drop-shadow(0 0 9px var(--green-glow)); }
+  .tri-btn.down:hover { border-top-color: var(--green);   filter: drop-shadow(0 0 9px var(--green-glow)); }
+
+  /* floating mini dB meter (left-middle; hidden on action; off by default) */
+  #miniDb {
+    position: absolute; left: 3%; top: 50%; transform: translateY(-50%); z-index: 40;
+    width: 2.4vh; height: 24vh; display: none; padding: 0.4vh;
+    background: #2a2c26; border: 0.25vh solid rgba(0,0,0,0.6);
+    box-shadow: 0 0 12px rgba(0,0,0,0.6);
+  }
+  #miniDb.on { display: block; }
+  .mini-track { position: relative; width: 100%; height: 100%; overflow: hidden; background: #14160f; }
+  .mini-fill  { position: absolute; left: 0; right: 0; bottom: 0; height: 0; overflow: hidden; }
+  .mini-fill-inner { position: absolute; left: 0; right: 0; bottom: 0; height: 24vh;
+    background: linear-gradient(to top, #19e84a 0%, #ffe000 50%, #ff2a2a 100%); }
 
   /* settings overlay rows + toggle states */
   .settings-rows { display: flex; flex-direction: column; gap: 2.2vh; align-items: stretch; margin-bottom: 1vh; }
@@ -420,8 +447,28 @@
   }
   #timerNum { font-family: 'Anton', sans-serif; font-size: 4vh; color: #fff; opacity: .9; }
 
-  /* ── Results screen — blackboard fills the stage; everything sits inside ── */
-  #screen-results { padding: 3% 3%; }
+  /* ── Results / Leaderboard — ONE view: slides up after a round and when summoned ── */
+  #screen-results {
+    padding: 3% 3%;
+    display: none;                 /* hidden = removed from layout: can't push the menu or peek below */
+    z-index: 70;
+    transform: translateY(100%);
+    transition: transform .42s cubic-bezier(.4,0,.2,1);
+    will-change: transform;
+    background: #000;              /* opaque base so the menu behind never peeks/shifts during the slide */
+    pointer-events: none;
+  }
+  #screen-results.shown { display: flex; }   /* in layout only while sliding/open */
+  #screen-results.up { transform: translateY(0); pointer-events: auto; }
+  /* the leaderboard's OWN looping halftone background (mp4 + jpg fallback) */
+  #screen-results .res-bg { position: absolute; inset: 0; z-index: 0; }
+  #screen-results .res-bg .fallback { position: absolute; inset: 0; background: #111 url('img/halftone.jpg') center/cover no-repeat; }
+  #screen-results .res-bg video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+  #screen-results > #board { position: relative; z-index: 1; }
+  #screen-results > #leaderDownBtn { position: absolute; top: 1.6%; left: 50%; transform: translateX(-50%); z-index: 3; }
+  /* round mode shows the personal score block; browse mode shows just the list */
+  #board.browse .round-only { display: none; }
+  #board:not(.browse) .browse-head { display: none; }
   #board {
     position: relative;
     width: 100%;
@@ -482,6 +529,28 @@
     box-shadow: inset 0 0 0 0.2vh var(--green);
     color: #fff;
   }
+  .board-row .replay-btn {
+    flex: 0 0 auto; width: 3.2vh; height: 3.2vh; padding: 0;
+    border-radius: 50%; border: 0.2vh solid var(--green);
+    background: rgba(166,226,46,0.16); color: var(--green);
+    font-size: 1.5vh; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s;
+  }
+  .board-row .replay-btn:hover { background: var(--green); color: var(--ink); }
+  /* radial progress ring inside the replay button (driven by --prog 0..1) */
+  .board-row .replay-btn { position: relative; overflow: hidden; }
+  .board-row .replay-btn::before {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(var(--green) calc(var(--prog, 0) * 360deg), rgba(255,255,255,0.14) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent 56%, #000 58%);
+            mask: radial-gradient(farthest-side, transparent 56%, #000 58%);
+    z-index: 0;
+  }
+  .board-row .replay-btn .rp-glyph { position: relative; z-index: 1; }
+  /* small Monster logo at the top of the results board */
+  #board .res-logo { width: 26%; max-width: 130px; flex: 0 0 auto;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.85)); }
   #backWrap { display: inline-block; width: 74%; max-width: 360px; animation: floatY 2.6s ease-in-out infinite; }
   #backBtn { width: 100%; }
   #backBtn .label { font-size: 3.4vh; }
@@ -516,6 +585,8 @@
     color: var(--ink); box-shadow: 0 0 22px var(--green-glow);
   }
   .mini-btn:hover { transform: scale(1.05); }
+  /* settings overlay buttons: smaller text so the list stays compact */
+  #settingsOverlay .mini-btn { font-size: 2.1vh; padding: 1.3vh 2.6vh; }
   .cal-meter { width: 34vh; height: 34vh; margin: 0 auto 3.4vh; filter: drop-shadow(0 0 26px var(--green-glow)); }
   .cal-meter svg { width: 100%; height: 100%; }
   .cal-card p { font-size: 2.8vh; color: #fff; line-height: 1.4; }
@@ -589,14 +660,25 @@
     <div id="timerNum">10</div>
   </section>
 
-  <!-- ── Results ────────────────────────────────────────────────── -->
+  <!-- ── Results / Leaderboard (the ONE leaderboard: shown after a round AND summoned) ── -->
   <section id="screen-results" class="screen">
+    <div class="res-bg">
+      <div class="fallback"></div>
+      <video class="bgvid" muted loop playsinline autoplay poster="img/halftone.jpg">
+        <source src="img/halftone-loop.mp4" type="video/mp4">
+      </video>
+    </div>
+    <button id="leaderDownBtn" class="tri-btn down" aria-label="Back to menu"></button>
     <div id="board">
       <img class="board-bg" src="img/blackboard.png" alt="">
-      <div class="res-head">Your <span class="accent">Score</span></div>
-      <div id="finalScore">0<small> PTS</small></div>
-      <div id="peakDbLine">Max Scream: 0 dB</div>
-      <input id="nameInput" maxlength="18" autocomplete="off" spellcheck="false" aria-label="Your name">
+      <img class="res-logo" src="img/monster-large-noline.png" alt="Monster Energy">
+      <div class="res-head browse-head"><span class="accent">Leaderboard</span></div>
+      <div class="round-only">
+        <div class="res-head">Your <span class="accent">Score</span></div>
+        <div id="finalScore">0<small> PTS</small></div>
+        <div id="peakDbLine">Max Scream: 0 dB</div>
+        <input id="nameInput" maxlength="18" autocomplete="off" spellcheck="false" aria-label="Your name">
+      </div>
       <div id="boardList"></div>
       <div id="backWrap">
         <button id="backBtn" class="paper-btn">
@@ -608,8 +690,14 @@
     </div>
   </section>
 
-  <!-- bottom settings button (title only) -->
-  <button id="settingsBtn" class="on">Settings</button>
+  <!-- bottom bar (title only): settings + triangle that summons the leaderboard -->
+  <div id="menuBottom" class="on">
+    <button id="settingsBtn">Settings</button>
+    <button id="leaderUpBtn" class="tri-btn up" aria-label="Show leaderboard"></button>
+  </div>
+
+  <!-- floating mini dB meter (toggle in settings; hidden on the action screen) -->
+  <div id="miniDb"><div class="mini-track"><div class="mini-fill"><div class="mini-fill-inner"></div></div></div></div>
 
   <!-- ── Mic notice modal ───────────────────────────────────────── -->
   <div id="micModal" class="overlay show">
@@ -641,6 +729,8 @@
         <button id="setMusicBtn" class="mini-btn toggle">Music: On</button>
         <button id="setMicBtn" class="mini-btn toggle">Microphone: On</button>
         <button id="setBgmBtn" class="mini-btn toggle">Action BGM: Silent</button>
+        <button id="setMiniBtn" class="mini-btn toggle">dB Meter: Off</button>
+        <button id="setIdleBtn" class="mini-btn toggle">Idle Leaderboard: On</button>
         <button id="setClearBtn" class="mini-btn">Clear Leaderboard</button>
       </div>
       <button id="setClose" class="mini-btn primary" style="margin-top:3vh">Done</button>
@@ -734,17 +824,27 @@ const QUARTER_BEAT = BEAT / 4;
 // rewinds to the start of the recording for full-volume playback.
 const ACTION_MEASURES = 4;
 
+// Mic-input latency: the captured voice lags real time by this much, so the take
+// plays back slightly late. Drop this many ms from the FRONT of the take to
+// re-align it with the music. Tune if playback is still a touch late (raise) or
+// early (lower).
+const REC_LATENCY_MS = 20;
+
 // BGM treatment DURING the action screen (settings toggle, default 'silent').
 const BGM_LOW_FREQ      = 300;    // low-pass cutoff for "BGM Low"
 const BGM_LOW_VOL       = 0.70;   // volume factor for "BGM Low"
 const BGM_OPEN_FREQ     = 20000;  // filter fully open (no audible effect)
 
 // Version + changelog (changelog shown once per page load).
-const VERSION = 'v0.2.0';
+const VERSION = 'v0.2.1';
 const CHANGELOG = [
   'Added leaderboards with default and editable names',
   'BGM is silent/lowpassed during the action screen (can be set in settings)',
-  'Hold spacebar on main menu to start'
+  'Hold spacebar on main menu to start',
+  'Leaderboard can be viewed from main menu',
+  'Leaderboard screamers can be replayed',
+  'Mini dB meter on main menu (helps to see if mic works)',
+  'Bug fixes'
 ];
 
 // Daily leaderboard: random default names = adjective + name.
@@ -776,11 +876,13 @@ let MONSTER_PATHS = [
 ];
 
 // ── DOM refs ─────────────────────────────────────────────────────────
+// NOTE: results/leaderboard is intentionally NOT in this map — it's a slide-up
+// overlay controlled by openResults/closeResults (display:none when hidden), so
+// showScreen never toggles its display and it can't interfere with the menu.
 const screens = {
   title:   document.getElementById('screen-title'),
   prep:    document.getElementById('screen-prep'),
   action:  document.getElementById('screen-action'),
-  results: document.getElementById('screen-results'),
 };
 const bgLayers   = {
   title:   document.getElementById('bgTitle'),
@@ -793,6 +895,13 @@ const startWrap  = document.getElementById('startWrap');
 const startBtn   = document.getElementById('startBtn');
 const backBtn    = document.getElementById('backBtn');
 const settingsBtn= document.getElementById('settingsBtn');
+const menuBottom = document.getElementById('menuBottom');
+const leaderUpBtn= document.getElementById('leaderUpBtn');
+const leaderDownBtn = document.getElementById('leaderDownBtn');
+const resultsScreen = document.getElementById('screen-results');
+const board      = document.getElementById('board');
+const miniDb     = document.getElementById('miniDb');
+const miniFillEl = document.querySelector('#miniDb .mini-fill');
 const settingsOverlay = document.getElementById('settingsOverlay');
 const setCalBtn  = document.getElementById('setCalBtn');
 const setMusicBtn= document.getElementById('setMusicBtn');
@@ -810,6 +919,8 @@ const peakDbLine = document.getElementById('peakDbLine');
 const nameInput  = document.getElementById('nameInput');
 const boardList  = document.getElementById('boardList');
 const setBgmBtn  = document.getElementById('setBgmBtn');
+const setMiniBtn = document.getElementById('setMiniBtn');
+const setIdleBtn = document.getElementById('setIdleBtn');
 const setClearBtn= document.getElementById('setClearBtn');
 const confirmModal    = document.getElementById('confirmModal');
 const confirmClearYes = document.getElementById('confirmClearYes');
@@ -859,13 +970,40 @@ let actionStartCtx = 0, peakScore = SCORE_MIN, dispNorm = 0, lastTick = -1;
 let clickerMode = false, clickCount = 0, clickEnergy = 0;
 let bucket = 0, score = 0, peakDb = 0, lastQuarterBeat = -1, lastStepCtx = 0, dispInst = 0;   // bucket + score + loudest dB + smoothed left-bar level
 
-// settings
+// settings (persisted in localStorage)
 let musicMuted = false, micMuted = false;
 let bgmActionMode = 'silent';   // 'silent' | 'low' — bgm treatment during the action screen
 let musicDuck = 'normal';       // 'normal' | 'silent' | 'low' — live duck state
+let miniDbOn = false;           // floating mini dB meter (off by default)
+let idleBoardOn = true;         // auto-summon leaderboard after 30s idle (on by default)
+const SETTINGS_KEY = 'scream-settings';
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ musicMuted, micMuted, bgmActionMode, miniDbOn, idleBoardOn })); } catch (_) {}
+}
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (s) {
+      musicMuted = !!s.musicMuted; micMuted = !!s.micMuted;
+      bgmActionMode = (s.bgmActionMode === 'low') ? 'low' : 'silent';
+      miniDbOn = !!s.miniDbOn;
+      idleBoardOn = (s.idleBoardOn !== false);   // default on
+    }
+  } catch (_) {}
+}
 
-// voice recording / playback (decoded + played on the AudioContext for mobile)
-let recorder = null, recChunks = [], recSource = null, recGain = null;
+// voice recording: raw-PCM capture on the AudioContext → sample-accurate start,
+// mono, normalizable. Played back scheduled onto the bgm's beat grid.
+let recMicSrc = null, recNode = null, recWorkletReady = false, recCapturing = false;
+let recBlocks = [], recGot = 0, recNeeded = 0, recSampleRate = 44100;
+let recSource = null, recGain = null;
+let lastTakeBuffer = null;        // most recent take (AudioBuffer, mono, normalized)
+let playbackAt = 0;               // ctx time the take should start (D+1 downbeat)
+const recordings = new Map();     // leaderboard entryId → { buffer, drumfill }
+let recDB = null;                 // IndexedDB handle (persist takes across reloads)
+let leaderOpen = false;           // leaderboard slide-up panel state
+let miniLevel = 0;                // smoothed level for the floating mini dB meter
+let replayRaf = null, replayBtnEl = null;   // replay radial-progress animation
 
 let calFill = null, actFill = null, calFromModal = false;
 let rafId = null;
@@ -1101,46 +1239,182 @@ function setMicMuted(v)    { micMuted = v; }
 // Action screen falls back to the tap-clicker game.
 function canUseMic()      { return micReady && !!analyser && !micMuted; }
 
-// ── Voice recording: capture the mic during the action, replay it on results ──
-function startRecording() {
-  if (!micStream || typeof MediaRecorder === 'undefined') { recorder = null; return; }
+// ── Voice recording: AudioWorklet PCM capture (mono), beat-aligned replay ──
+// Capturing on the audio render thread is contiguous (no main-thread GC drops),
+// so the take has no dropped-block pops and never drifts in time. The Script
+// Processor version popped + drifted because dropped blocks shortened the take.
+const RECORDER_WORKLET =
+  'class R extends AudioWorkletProcessor{' +
+    'constructor(){super();this.on=false;' +
+      'this.port.onmessage=(e)=>{this.on=(e.data==="start");};}' +
+    'process(inputs){const ch=inputs[0]&&inputs[0][0];' +
+      'if(this.on&&ch&&ch.length)this.port.postMessage(ch.slice(0));return true;}}' +
+  'registerProcessor("rec-processor",R);';
+async function initRecorder() {
+  if (recWorkletReady || !actx || !actx.audioWorklet) return;
   try {
-    recChunks = [];
-    recorder = new MediaRecorder(micStream);
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
-    recorder.start();
-  } catch (_) { recorder = null; }
+    const url = URL.createObjectURL(new Blob([RECORDER_WORKLET], { type: 'application/javascript' }));
+    await actx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+    recWorkletReady = true;
+  } catch (e) { recWorkletReady = false; console.warn('recorder worklet failed:', e.message); }
 }
-// Stop recording; if playBack, DECODE the take and play it through the
-// AudioContext. HTMLAudioElement.play() is gesture-gated on mobile and iOS
-// can't play webm — decoding into the (already-running) context avoids both.
-function stopRecording(playBack) {
-  if (!recorder) return;
-  if (recorder.state === 'inactive') { recorder = null; return; }
-  recorder.onstop = () => {
-    const type = (recorder && recorder.mimeType) || '';
-    recorder = null;
-    if (!playBack || !recChunks.length || !actx) return;
-    const blob = new Blob(recChunks, type ? { type } : {});
-    blob.arrayBuffer()
-      .then(buf => actx.decodeAudioData(buf))
-      .then(audioBuf => playRecBuffer(audioBuf))
-      .catch(() => {});   // unsupported container / decode fail → no playback
-  };
-  try { recorder.stop(); } catch (_) { recorder = null; }
+function startRecording() {
+  if (!micStream || !actx || !recWorkletReady) { recCapturing = false; return; }
+  try {
+    recBlocks = [];
+    recGot = 0;
+    recSampleRate = actx.sampleRate;
+    recNeeded = Math.round(ACTION_MEASURES * measureLength * recSampleRate);
+    if (!recMicSrc) recMicSrc = actx.createMediaStreamSource(micStream);
+    if (!recNode) {
+      recNode = new AudioWorkletNode(actx, 'rec-processor',
+        { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      recNode.port.onmessage = (e) => {
+        if (recGot >= recNeeded) return;                 // keep every contiguous block up to the window
+        recBlocks.push(e.data);
+        recGot += e.data.length;
+      };
+      recNode.connect(actx.destination);                 // pulled by the graph; output stays silent
+    }
+    try { recMicSrc.connect(recNode); } catch (_) {}
+    recCapturing = true;
+    recNode.port.postMessage('start');
+  } catch (_) { recCapturing = false; }
 }
-function playRecBuffer(audioBuf) {
-  stopPlayback();
+function stopRecordingCapture() {
+  recCapturing = false;
+  try { if (recNode) recNode.port.postMessage('stop'); } catch (_) {}
+  try { if (recMicSrc && recNode) recMicSrc.disconnect(recNode); } catch (_) {}
+}
+// Assemble captured PCM → mono AudioBuffer, trimmed to the window. NO
+// normalization (raw level kept); just 5 ms edge fades so it doesn't click.
+function buildTakeBuffer() {
+  const total = Math.min(recNeeded || 0, recGot);
+  if (!total || !actx) return null;
+  const full = new Float32Array(total);
+  let o = 0;
+  for (const b of recBlocks) {
+    if (o >= total) break;
+    const take = Math.min(b.length, total - o);
+    full.set(take === b.length ? b : b.subarray(0, take), o);
+    o += take;
+  }
+  // Drop the leading mic-input latency so the voice lands on the beat, not late.
+  const lead = Math.min(Math.round(REC_LATENCY_MS / 1000 * recSampleRate), Math.max(0, total - 1));
+  const pcm = new Float32Array(full.subarray(lead));   // own buffer (so fades don't touch the source)
+  const n = pcm.length;
+  const fade = Math.min(Math.round(recSampleRate * 0.005), Math.floor(n / 2));
+  for (let i = 0; i < fade; i++) { const g = i / fade; pcm[i] *= g; pcm[n - 1 - i] *= g; }
+  const buf = actx.createBuffer(1, n, recSampleRate);   // mono, raw level
+  buf.copyToChannel(pcm, 0);
+  return buf;
+}
+function ensureRecGain() {
   if (!recGain) { recGain = actx.createGain(); recGain.gain.value = 1.0; recGain.connect(actx.destination); }
+}
+// Start a take at AudioContext time `when` (scheduled, so it lands on the beat).
+function playTakeAt(buffer, when) {
+  stopPlayback();
+  if (!buffer || !actx) return;
+  ensureRecGain();
   if (actx.state === 'suspended') actx.resume();
   const s = actx.createBufferSource();
-  s.buffer = audioBuf;
+  s.buffer = buffer;
   s.connect(recGain);
-  s.start();
+  s.start(Math.max(actx.currentTime, when || actx.currentTime));
   recSource = s;
 }
 function stopPlayback() {
   if (recSource) { try { recSource.stop(); } catch (_) {} try { recSource.disconnect(); } catch (_) {} recSource = null; }
+}
+// Leaderboard replay: jump the bgm to the take's drum-fill measure on the next
+// downbeat, fire the riser, then start the take on the following measure — the
+// same drum-fill → drop → recording timing as a live round.
+function triggerReplay(rec, btn) {
+  if (!playing || !rec || !rec.buffer || !actx) return;
+  stopPlayback();
+  cancelReplayProgress();
+  setMusicNormalImmediate();
+  const at = nextBoundary(actx.currentTime + 0.06);    // seamless swap on a downbeat
+  swapToMeasure(rec.drumfill, at);                     // drum fill leads in
+  playOneShot(buffers.riser, at);
+  const startAt = at + measureLength;                  // take on the measure after the fill
+  playTakeAt(rec.buffer, startAt);
+  spinner.classList.add('show');                       // spinner covers the drum-fill lead-in
+  startReplayProgress(btn || null, startAt, rec.buffer.duration);
+}
+// Drive the button's ring: 0 while the lead-in plays (spinner up), then 0→1 over
+// the take. Clears itself (and the spinner) when the take finishes.
+function startReplayProgress(btn, startAt, dur) {
+  replayBtnEl = btn;
+  function step() {
+    replayRaf = requestAnimationFrame(step);
+    const now = actx.currentTime;
+    if (now < startAt) { if (btn) btn.style.setProperty('--prog', 0); return; }
+    spinner.classList.remove('show');
+    const p = Math.min(1, (now - startAt) / dur);
+    if (btn) btn.style.setProperty('--prog', p.toFixed(3));
+    if (p >= 1) cancelReplayProgress();
+  }
+  step();
+}
+function cancelReplayProgress() {
+  if (replayRaf) { cancelAnimationFrame(replayRaf); replayRaf = null; }
+  if (replayBtnEl) { replayBtnEl.style.setProperty('--prog', 0); replayBtnEl = null; }
+  spinner.classList.remove('show');
+}
+
+// ── Persist takes across reloads (IndexedDB; today's takes only) ──────
+function openRecDB() {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('scream-takes', 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore('takes', { keyPath: 'key' }); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror   = () => resolve(null);
+    } catch (_) { resolve(null); }
+  });
+}
+async function storeRecording(id, buffer, drumfill) {
+  try {
+    if (!recDB) recDB = await openRecDB();
+    if (!recDB) return;
+    const rec = { key: todayKey() + ':' + id, day: todayKey(), id,
+                  pcm: buffer.getChannelData(0).slice(), sampleRate: buffer.sampleRate, drumfill };
+    recDB.transaction('takes', 'readwrite').objectStore('takes').put(rec);
+  } catch (_) {}
+}
+async function loadRecordings() {
+  try {
+    if (!recDB) recDB = await openRecDB();
+    if (!recDB || !actx) return;
+    const store = recDB.transaction('takes', 'readwrite').objectStore('takes');
+    const all = store.getAll();
+    all.onsuccess = () => {
+      const today = todayKey();
+      (all.result || []).forEach(r => {
+        if (r.day !== today) { try { store.delete(r.key); } catch (_) {} return; }   // prune old days
+        try {
+          const pcm = r.pcm instanceof Float32Array ? r.pcm : new Float32Array(r.pcm);
+          const buf = actx.createBuffer(1, pcm.length, r.sampleRate || actx.sampleRate);
+          buf.copyToChannel(pcm, 0);
+          recordings.set(r.id, { buffer: buf, drumfill: r.drumfill || 0 });
+        } catch (_) {}
+      });
+      if (leaderOpen) renderBoard();
+    };
+  } catch (_) {}
+}
+function clearStoredRecordings() {
+  recordings.clear();
+  try {
+    if (!recDB) return;
+    const store = recDB.transaction('takes', 'readwrite').objectStore('takes');
+    const today = todayKey();
+    const all = store.getAll();
+    all.onsuccess = () => (all.result || []).forEach(r => { if (r.day === today) { try { store.delete(r.key); } catch (_) {} } });
+  } catch (_) {}
 }
 
 // ── Daily leaderboard (localStorage, keyed by date → resets each day) ──
@@ -1177,10 +1451,10 @@ function renameCurrentEntry(name) {
   if (e) { e.name = name; saveBoard(board); }
 }
 // Render today's board (highest → lowest), highlighting the current entry.
-function renderBoard() {
-  if (!boardList) return;
+function renderBoardInto(container) {
+  if (!container) return;
   const board = loadBoard();
-  boardList.innerHTML = '';
+  container.innerHTML = '';
   board.forEach((e, i) => {
     const row = document.createElement('div');
     row.className = 'board-row' + (e.id === currentEntryId ? ' you' : '');
@@ -1188,11 +1462,22 @@ function renderBoard() {
     const sc   = document.createElement('span'); sc.className = 'bscore'; sc.textContent = e.score;
     const nm   = document.createElement('span'); nm.className = 'bname'; nm.textContent = e.name;
     row.append(rank, sc, nm);
-    boardList.appendChild(row);
+    // Replay button (radial progress) — only for entries whose take we still have.
+    const rec = recordings.get(e.id);
+    if (rec) {
+      const rb = document.createElement('button');
+      rb.className = 'replay-btn'; rb.title = 'Replay';
+      rb.innerHTML = '<span class="rp-glyph">▶</span>';
+      rb.addEventListener('click', (ev) => { ev.stopPropagation(); triggerReplay(rec, rb); });
+      row.append(rb);
+    }
+    container.appendChild(row);
   });
-  const you = boardList.querySelector('.board-row.you');
+  const you = container.querySelector('.board-row.you');
   if (you) you.scrollIntoView({ block: 'nearest' });
 }
+// One leaderboard list (the results-screen blackboard), used after a round and when summoned.
+function renderBoard() { renderBoardInto(boardList); }
 
 // Next beat-aligned measure boundary at or after time `t`.
 function nextBoundary(t) {
@@ -1331,7 +1616,9 @@ function finishCalibration() {
 
 function revealTitle() {
   startWrap.style.display = '';
-  settingsBtn.classList.add('on');
+  menuBottom.classList.add('on');
+  updateMiniDb();
+  resetIdleTimer();
 }
 
 // ── Paper-scrap text engine (ported, local Anton) ──────────────────
@@ -1393,13 +1680,19 @@ function showScreen(name) {
   fence.classList.toggle('on', name === 'title');
   vignette.classList.toggle('on', name !== 'title');
   brandTop.classList.toggle('on', name === 'title' || name === 'prep');
-  settingsBtn.classList.toggle('on', name === 'title');
+  menuBottom.classList.toggle('on', name === 'title');
+  updateMiniDb();
+}
+// Mini dB meter shows on every screen except action, when enabled in settings.
+function updateMiniDb() {
+  miniDb.classList.toggle('on', miniDbOn && !screens.action.classList.contains('active'));
 }
 
 // ── Start flow + director ────────────────────────────────────────────
 function onStart() {
   if (!playing || flow !== 'idle') return;
   stopPlayback();                 // stop any prior take still playing on results
+  cancelReplayProgress();
   setMusicDuck('normal');         // bgm full during the lead-in
   playOneShot(buffers.scream);
   playOneShot(buffers.squeal);
@@ -1425,7 +1718,9 @@ function onStart() {
   flow = 'spinner';
   spinner.classList.add('show');
   startWrap.style.display = 'none';
-  settingsBtn.classList.remove('on');
+  menuBottom.classList.remove('on');
+  resultsScreen.classList.remove('up', 'shown'); leaderOpen = false; clearIdleTimer();
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
 }
 
 // On the 4th (final) action measure: rewind the bgm to the drum-fill measure,
@@ -1437,6 +1732,7 @@ function doRewind() {
   rewindDone = true;
   const t = actx.currentTime;
   swapToMeasure(drumfillMeasure, t);                       // rewind to the drum fill (e.g. 21)
+  playbackAt = posStartTime + measureLength;               // the D+1 downbeat → take starts exactly here
   if (!riserFired) { riserFired = true; playOneShot(buffers.riser, t); }  // riser alongside the last measure
   fadeMusicInOverMeasure(t, Math.max(0.05, actionEndTime - t));
 }
@@ -1495,9 +1791,12 @@ function finishAction() {
 
   // The 4th-measure rewind put the bgm at the drum fill; from here it just plays
   // NORMALLY (carries D → D+1 …). Hard-normalize so no fade/low-pass automation
-  // bleeds into the playback, then play the take over the normal bgm (mic mode).
+  // bleeds into the playback.
   setMusicNormalImmediate();
-  stopRecording(!clickerMode);
+
+  // Build the take (mono, peak-normalized to 0 dB) from the captured PCM.
+  let take = null;
+  if (!clickerMode) { stopRecordingCapture(); take = buildTakeBuffer(); lastTakeBuffer = take; }
 
   const unit = clickerMode ? ' TAPS' : ' PTS';
   finalScore.innerHTML = peakScore + '<small>' + unit + '</small>';
@@ -1509,13 +1808,26 @@ function finishAction() {
     peakDbLine.textContent = 'Max Scream: ' + peakDb + ' dB';
   }
 
-  // Daily leaderboard: add this round, pre-fill the editable name, render list.
-  const board = addScore(peakScore);
-  const me = board.find(x => x.id === currentEntryId);
+  // Daily leaderboard: add this round, pre-fill the editable name.
+  const list = addScore(peakScore);
+  const me = list.find(x => x.id === currentEntryId);
   nameInput.value = me ? me.name : randomName();
-  renderBoard();
 
-  showScreen('results');
+  // Register the take BEFORE rendering, so the user's row gets a replay button.
+  if (take) recordings.set(currentEntryId, { buffer: take, drumfill: drumfillMeasure });
+
+  // Slide up the leaderboard in round mode — the SAME screen/list the menu summons.
+  openResults('round');
+
+  // Play the take, scheduled to the D+1 downbeat the rewind set up, so the voice
+  // lands on the music; the user's row's radial progresses immediately.
+  if (take) {
+    storeRecording(currentEntryId, take, drumfillMeasure);
+    const startAt = playbackAt || actx.currentTime;
+    playTakeAt(take, startAt);
+    const youBtn = boardList.querySelector('.board-row.you .replay-btn');
+    startReplayProgress(youBtn, startAt, take.duration);
+  }
 }
 
 function actionStep() {
@@ -1616,14 +1928,22 @@ function loop() {
     if (now >= rewindTime) doRewind();   // 4th measure: rewind to the drum fill + riser + fade-in
     actionStep();
   }
+
+  // Floating mini dB meter (when enabled and not on the action screen).
+  if (miniDbOn && miniFillEl && flow !== 'action') {
+    const nrm = canUseMic() ? levelFrom(readDbfs()).norm : 0;
+    miniLevel += (nrm - miniLevel) * 0.4;
+    miniFillEl.style.height = (miniLevel * 100) + '%';
+  }
 }
 
 // ── Modal flow ───────────────────────────────────────────────────────
 // OK → request mic permission (inside the gesture so mobile shows the prompt)
 // → start the music → auto-open calibration.
 okBtn.addEventListener('click', async () => {
-  if (actx && actx.state === 'suspended') actx.resume();  // resume in-gesture (no await)
-  await requestMic();          // fire getUserMedia first, inside the tap (iOS needs this)
+  const micP = requestMic();   // fire getUserMedia as the FIRST thing in the tap (iOS prompt)
+  if (actx && actx.state === 'suspended') actx.resume();  // resume still in-gesture (no await)
+  await micP;
   await audioReady;            // make sure the loop is decoded before we (later) start it
   ensureMicGraph();
   micModal.classList.remove('show');
@@ -1663,7 +1983,7 @@ window.addEventListener('keydown', (e) => {
 const START_HOLD_MS = 1000;
 let startHoldRaf = null, startHoldT0 = 0;
 function canHoldStart() {
-  return flow === 'idle' && playing
+  return flow === 'idle' && playing && !leaderOpen
     && screens.title.classList.contains('active')
     && startWrap.style.display !== 'none'
     && !micModal.classList.contains('show')
@@ -1704,18 +2024,85 @@ function updateSettingsUI() {
   setMicBtn.classList.toggle('off', micMuted);
   setBgmBtn.textContent = 'Action BGM: ' + (bgmActionMode === 'low' ? 'Low' : 'Silent');
   setBgmBtn.classList.toggle('off', bgmActionMode === 'silent');
+  setMiniBtn.textContent = 'dB Meter: ' + (miniDbOn ? 'On' : 'Off');
+  setMiniBtn.classList.toggle('off', !miniDbOn);
+  setIdleBtn.textContent = 'Idle Leaderboard: ' + (idleBoardOn ? 'On' : 'Off');
+  setIdleBtn.classList.toggle('off', !idleBoardOn);
 }
 settingsBtn.addEventListener('click', () => { updateSettingsUI(); settingsOverlay.classList.add('show'); });
 setClose.addEventListener('click', () => settingsOverlay.classList.remove('show'));
 setCalBtn.addEventListener('click', () => { settingsOverlay.classList.remove('show'); runCalibration(false); });
-setMusicBtn.addEventListener('click', () => { setMusicMuted(!musicMuted); updateSettingsUI(); });
-setMicBtn.addEventListener('click', () => { setMicMuted(!micMuted); updateSettingsUI(); });
-setBgmBtn.addEventListener('click', () => { bgmActionMode = (bgmActionMode === 'silent' ? 'low' : 'silent'); updateSettingsUI(); });
+setMusicBtn.addEventListener('click', () => { setMusicMuted(!musicMuted); saveSettings(); updateSettingsUI(); });
+setMicBtn.addEventListener('click', () => { setMicMuted(!micMuted); saveSettings(); updateSettingsUI(); });
+setBgmBtn.addEventListener('click', () => { bgmActionMode = (bgmActionMode === 'silent' ? 'low' : 'silent'); saveSettings(); updateSettingsUI(); });
+setMiniBtn.addEventListener('click', () => { miniDbOn = !miniDbOn; saveSettings(); updateMiniDb(); updateSettingsUI(); });
+setIdleBtn.addEventListener('click', () => { idleBoardOn = !idleBoardOn; saveSettings(); updateSettingsUI(); resetIdleTimer(); });
+
+// ── Leaderboard (the results screen) slide ────────────────────────────
+// 'round' = after a scream (shows the personal score block); 'browse' = summoned
+// from the menu / idle (just the list). Same screen + list either way.
+let hideTimer = null;
+function openResults(mode) {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  board.classList.toggle('browse', mode === 'browse');
+  renderBoard();
+  resultsScreen.classList.add('shown');     // display:flex, still at translateY(100%)
+  void resultsScreen.offsetWidth;           // reflow so the transform animates from below
+  resultsScreen.classList.add('up');        // → translateY(0)
+  leaderOpen = true;
+  clearIdleTimer();
+}
+function closeResults() {
+  stopPlayback();
+  cancelReplayProgress();
+  flow = 'idle';
+  clearScraps();
+  showScreen('title');
+  startWrap.style.display = '';     // ensure the START button is back (it's hidden during a round)
+  resultsScreen.classList.remove('up');     // slide down
+  leaderOpen = false;
+  if (hideTimer) clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => { resultsScreen.classList.remove('shown'); hideTimer = null; }, 460);  // then drop from layout
+  resetIdleTimer();
+}
+leaderUpBtn.addEventListener('click', () => openResults('browse'));
+leaderDownBtn.addEventListener('click', closeResults);
+function anyOverlayOpen() {
+  return micModal.classList.contains('show') || calOverlay.classList.contains('show') ||
+         settingsOverlay.classList.contains('show') || confirmModal.classList.contains('show') ||
+         changelogModal.classList.contains('show');
+}
+// Up arrow (menu): summon the leaderboard up. Down arrow (leaderboard): slide it
+// back down to the menu.
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  if (anyOverlayOpen()) return;
+  if (e.key === 'ArrowUp' && !leaderOpen && flow === 'idle' && screens.title.classList.contains('active')) {
+    e.preventDefault(); openResults('browse');
+  } else if (e.key === 'ArrowDown' && leaderOpen) {
+    e.preventDefault(); closeResults();
+  }
+});
+
+// ── Idle auto-summon: after 30s untouched on the menu, slide the leaderboard up ──
+let idleTimer = null;
+const IDLE_MS = 30000;
+function idleEligible() {
+  return idleBoardOn && playing && flow === 'idle' &&
+         screens.title.classList.contains('active') && !leaderOpen && !anyOverlayOpen();
+}
+function clearIdleTimer() { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } }
+function resetIdleTimer() {
+  clearIdleTimer();
+  if (idleEligible()) idleTimer = setTimeout(() => { if (idleEligible()) openResults('browse'); }, IDLE_MS);
+}
+['pointerdown', 'keydown', 'mousemove'].forEach(ev => window.addEventListener(ev, resetIdleTimer, { passive: true }));
 // Clear today's leaderboard (with a confirmation step).
 setClearBtn.addEventListener('click', () => confirmModal.classList.add('show'));
 confirmClearNo.addEventListener('click', () => confirmModal.classList.remove('show'));
 confirmClearYes.addEventListener('click', () => {
   try { localStorage.removeItem(todayKey()); } catch (_) {}
+  clearStoredRecordings();
   currentEntryId = null;
   renderBoard();
   confirmModal.classList.remove('show');
@@ -1733,14 +2120,11 @@ nameInput.addEventListener('input', () => {
 });
 
 backBtn.addEventListener('click', () => {
-  stopPlayback();                 // stop the replay if still going
   setMusicDuck('normal');
   playOneShot(buffers.scream);
   playOneShot(buffers.squeal);
-  flow = 'idle';
-  clearScraps();
-  showScreen('title');
   startWrap.style.display = '';
+  closeResults();                 // stop playback, reset to title, slide down, re-arm idle
 });
 
 // hide a bg <video> if it can't load — the jpg fallback shows underneath
@@ -1778,9 +2162,12 @@ document.getElementById('clVersion').textContent = VERSION;
   const ul = document.getElementById('clList');
   CHANGELOG.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
 })();
+loadSettings();      // restore saved settings (music/mic/bgm/mini-meter) from localStorage
 updateSettingsUI();
+updateMiniDb();
 
 const audioReady = initAudio();   // create context + decode buffers up front (no sound until a gesture)
+audioReady.then(() => { initRecorder(); loadRecordings(); });  // worklet + restore today's takes
 </script>
 </body>
 </html>
