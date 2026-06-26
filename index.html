@@ -151,6 +151,7 @@
     line-height: 0.92;
     letter-spacing: 0.01em;
     text-transform: uppercase;
+    transform: rotate(-5deg);
     text-shadow: 0 6px 14px rgba(0,0,0,0.85), 0 0 2px #000;
   }
 
@@ -634,7 +635,7 @@
 
   <!-- ── Title ──────────────────────────────────────────────────── -->
   <section id="screen-title" class="screen active">
-    <h1 class="title">Scream<br>Machine</h1>
+    <h1 class="title">ROCK &<br>ROAR</h1>
     <div id="startWrap">
       <button id="startBtn" class="paper-btn">
         <img src="img/start.png" alt="">
@@ -788,9 +789,9 @@ const SONG = SONGS[0];
 
 // ── Editable on-screen text ──────────────────────────────────────────
 const UI_TEXT = {
-  title:          'Scream\nMachine',       // main-menu title ("SCREAM MACHINE")
+  title:          'ROCK\nAND\nROAR',       // main-menu title ("SCREAM MACHINE")
   startButton:    'Start',                  // text inside the START button
-  prepareMessage: 'GET READY TO SCREAM!!',  // "Get Ready" message
+  prepareMessage: 'GET READY TO ROAR!!',  // "Get Ready" message
   backMenuButton: 'Main Menu',              // results-screen back button
 };
 
@@ -816,9 +817,9 @@ const MAX_DB    = 95;      // this loudness = 100% (top = 130 on the scale)
 const CEIL_DBFS = MAX_DB - DB_REF;   // -5 dBFS is the 100% ceiling
 
 // Bucket mechanic (the action-screen monster is a tank that fills while loud).
-const BUCKET_THRESHOLD = 0.5;     // instantaneous loudness at/above which it fills
-const BUCKET_RISE      = 1 / 7;   // per second → ~7s of sustained loud fills 0→1
-const BUCKET_DECAY     = 1 / 9;   // per second → drains in ~9s of quiet
+const BUCKET_THRESHOLD = 0.3;     // instantaneous loudness at/above which it fills
+const BUCKET_RISE      = 1 / 2;   // per second → ~2s of sustained loud fills 0→1
+const BUCKET_DECAY     = 1 / 3;   // per second → drains in ~3s of quiet
 
 // Loudness only registers once it's clearly ABOVE the calibrated ambient floor:
 // this deadzone (dB above the baseline) keeps ambient fluctuation reading as 0,
@@ -847,9 +848,11 @@ const BGM_LOW_VOL       = 0.70;   // volume factor for "BGM Low"
 const BGM_OPEN_FREQ     = 20000;  // filter fully open (no audible effect)
 
 // Version + changelog (changelog shown once per page load).
-const VERSION = 'v0.2.2';
+const VERSION = 'v0.2.3';
 const CHANGELOG = [
-  'Added setting to change number of bars in action screen. Set to 2 by default'
+  'Changed title to ROCK AND ROAR.',
+  'Changed "Get ready to scream" to "Get ready to roar!"',
+  'Changed scream scoring multiplier.'
 ];
 
 // Daily leaderboard: random default names = adjective + name.
