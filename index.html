@@ -283,7 +283,15 @@
     background: linear-gradient(to top, #19e84a 0%, #ffe000 50%, #ff2a2a 100%); }
 
   /* settings overlay rows + toggle states */
-  .settings-rows { display: flex; flex-direction: column; gap: 2.2vh; align-items: stretch; margin-bottom: 1vh; }
+  /* Only ~4 rows are shown at once; the rest scroll (keeps the pane compact).
+     30vh ≈ four button rows + a sliver of the next as a "more below" hint. */
+  .settings-rows { display: flex; flex-direction: column; gap: 2.2vh; align-items: stretch; margin-bottom: 1vh;
+    max-height: 30vh; overflow-y: auto; overflow-x: hidden;
+    padding-right: 1.2vh;                       /* clearance so the scrollbar doesn't sit on the buttons */
+    scrollbar-width: thin; scrollbar-color: var(--green) rgba(255,255,255,0.10); }
+  .settings-rows::-webkit-scrollbar { width: 8px; }
+  .settings-rows::-webkit-scrollbar-thumb { background: var(--green); border-radius: 99px; }
+  .settings-rows::-webkit-scrollbar-track { background: rgba(255,255,255,0.10); border-radius: 99px; }
   .mini-btn.toggle.off { background: #23251c; color: #9aa08c; }
   /* settings number input (action length) */
   .set-input-row { display: flex; align-items: center; justify-content: space-between; gap: 1.4vh;
@@ -433,8 +441,13 @@
       drop-shadow(0 0 40px var(--green-glow))
       brightness(1.16);
   }
-  #actionMeter svg { width: 100%; height: 100%; max-height: 60vh; }  /* larger (was 52vh) */
-  #actionMeter svg .ink-drip { stroke: none; }
+  /* two-PNG fill meter: empty-can base + monster-can revealed bottom-up. The
+     claw graphic is never altered — only masked by a clip reveal. Container AR
+     matches the source PNGs (1990×5646) so the clip % maps 1:1 to the artwork. */
+  .can-meter { position: relative; height: 100%; aspect-ratio: 1990 / 5646; margin: 0 auto; }
+  .can-meter img { position: absolute; inset: 0; width: 100%; height: 100%;
+    display: block; object-fit: fill; -webkit-user-drag: none; user-select: none; pointer-events: none; }
+  .can-meter .can-fill { clip-path: inset(100% 0 0 0); will-change: clip-path; }
   #actScore {
     font-family: 'Anton', sans-serif;
     font-size: 9vh; color: var(--green);
@@ -594,8 +607,7 @@
   .mini-btn:hover { transform: scale(1.05); }
   /* settings overlay buttons: smaller text so the list stays compact */
   #settingsOverlay .mini-btn { font-size: 2.1vh; padding: 1.3vh 2.6vh; }
-  .cal-meter { width: 34vh; height: 34vh; margin: 0 auto 3.4vh; filter: drop-shadow(0 0 26px var(--green-glow)); }
-  .cal-meter svg { width: 100%; height: 100%; }
+  .cal-meter { height: 34vh; margin: 0 auto 3.4vh; filter: drop-shadow(0 0 26px var(--green-glow)); }
   .cal-card p { font-size: 2.8vh; color: #fff; line-height: 1.4; }
   .cal-error { color: #ff5a5a; margin-top: 1vh; }
 </style>
@@ -740,6 +752,10 @@
           <label for="setBarsInput">Action Length</label>
           <span class="set-num-wrap"><input id="setBarsInput" class="set-num" type="number" min="1" max="32" step="1" inputmode="numeric"> bars</span>
         </div>
+        <div class="set-input-row">
+          <label for="setPlayVolInput">Playback Music</label>
+          <span class="set-num-wrap"><input id="setPlayVolInput" class="set-num" type="number" min="0" max="1" step="0.05" inputmode="decimal"> vol</span>
+        </div>
         <button id="setMiniBtn" class="mini-btn toggle">dB Meter: Off</button>
         <button id="setIdleBtn" class="mini-btn toggle">Idle Leaderboard: On</button>
         <button id="setClearBtn" class="mini-btn">Clear Leaderboard</button>
@@ -836,6 +852,10 @@ const QUARTER_BEAT = BEAT / 4;
 const ACTION_BARS_MIN = 1, ACTION_BARS_MAX = 32, ACTION_BARS_DEFAULT = 2;
 let actionBars = ACTION_BARS_DEFAULT;
 
+// Music volume (as a fraction of normal) WHILE the recording plays back on the
+// results screen, so the voice take sits on top. Set in Settings (default 0.7).
+const PLAYBACK_VOL_DEFAULT = 0.7;
+
 // Mic-input latency: the captured voice lags real time by this much, so the take
 // plays back slightly late. Drop this many ms from the FRONT of the take to
 // re-align it with the music. Tune if playback is still a touch late (raise) or
@@ -848,23 +868,15 @@ const BGM_LOW_VOL       = 0.70;   // volume factor for "BGM Low"
 const BGM_OPEN_FREQ     = 20000;  // filter fully open (no audible effect)
 
 // Version + changelog (changelog shown once per page load).
-const VERSION = 'v0.2.3';
+const VERSION = 'v0.2.4';
 const CHANGELOG = [
-  'Changed title to ROCK AND ROAR.',
-  'Changed "Get ready to scream" to "Get ready to roar!"',
-  'Changed scream scoring multiplier.'
+  'Added ability to duck music during playback in settings',
+  'Changed Monster Claw graphic into can'
 ];
 
 // Daily leaderboard: random default names = adjective + name.
 const NAME_ADJECTIVES = ['Charged','Nitro','Apex','Voodoo','Grid','Turbo','Savage','Primal','Chaos','Liquid','Hyper','Furious','Asphalt','Stealth','Subzero','Neon','Toxic','Psycho','Static','Unleashed'];
 const NAME_NOUNS      = ['Claw','Ripper','Beast','Fury','Havoc','Sector','Pulse','Vapor','Rider','Blaze','Rebel','Phantom','Titan','Rogue','Viper','Strike','Tracker','Breaker','Velocity','Maniac'];
-
-// One-time feature test for the gooey ink-drip SVG filter; degrade to a plain
-// rising fill if SVG filters aren't available.
-const GOO_OK = (function () {
-  try { return typeof SVGFEGaussianBlurElement !== 'undefined'; }
-  catch (_) { return false; }
-})();
 
 // Drum-fill "touch points" (1-based measures from SONG) → stored 0-based.
 const TOUCH_POINTS_1 = SONG.drumfills;
@@ -874,14 +886,6 @@ const COUNT_WORDS = ['3', '2', '1', 'SCREAM!'];
 const BAND_MSGS   = ["CAN'T HEAR YOU!", "GET LOUD!", "MAXIMUM SCREAM!", "MONSTROUS!!"];
 const CLICK_MSGS  = ["TAP FASTER!", "KEEP GOING!", "ON FIRE!", "UNSTOPPABLE!!"];
 const BAND_SUBDIV = [1, 1, 2, 4];   // pulses / refreshes per beat, per band
-
-// Monster logo paths — hardcoded FALLBACK; loadMonsterPaths() replaces these
-// with the live img/monster.svg geometry at boot. Used for both fill meters.
-let MONSTER_PATHS = [
-  "m60 50c4.33-11.34 22.77-7.66 40-20 13.06 4.99 26.45-0.04 40-10 8.33 6.78 18.44 9.9 30 10 4.96 12.99 10.53 24.91 20 30-8.93 0.94-9.68 5.38-10 10-8.52 1.26-15.04 4.44-17.45 11.6 1.1 17.07 0.95 30.36 7.45 38.4-6.9 3.71-10.32 10.31-10 20-0.61 12.48-0.02 24.09 9.7 29.11-2.77 11.59 2.97 21.41 10.3 30.89-8.53 13.54-11.62 25.3 0 32.23-7.23 10.26-6.1 19.36 0 27.77-11.53 17.69-17.53 38.01-20 60-0.25 5.85 4.01 12.73 10 20-6.73 13.29-10.26 26.62-10 40 13.72 9.26-1.28 22.34 10 50-0.66 6.81-4.5 13.45-10 20 3.48-11.5 3.32-21.43 0-30-13.09-20.85-7.41-53.89-20-70 5.61-11.33 6.02-24.51 0-40l-10-10c4.61-7.1 8.3-13.89 10-20 4.87-12.5 4.21-25.62 0-39.15 3.05-11.7 3.47-22.18 0-30.85 0.28-15.08-2.88-28.5-10-40l-10-10c1-17.14 4.26-33.82 10-50 2.12-13.86 0.05-24.75-10-30-4.96-2.28 0.11-10.53 0-20-0.3-4.36-3.55-7.72-10-10h-40z",
-  "m170 40l30-20h20c5.66-5.98 15.61-9.34 30-10 9.59-11.42 22.02 12.87 40 10-2.64 7.58 0.12 14.33 10 20l-20 10c7.28 6.64-10.53 14.68-10 30 0.26 10.54 2.77 20.68 10 30-6.15 5.3-9.67 11.88-10 20 8.35 2.14 12.01 8.52 10 20-6.92 11.15-10.13 22.18 0 32.77-8.48 7.19-6.84 20.61 0 37.23 7.34 20.85-35.74 21.49-20 110-17.34 56.06 7.23 48.4 0 70l-10 60-10 20c-7.87-14.47 5.45-32.43 0-40 3.4-15.43-1.32-24.3-10-30l10-20c-13.62-12.87-0.21-32.02-10-60v-20c-1.63-4.84-5.06-8.09-10-10 10.99-18.91 16.29-43.64 20-70 0.23-12.92-4.24-26.39-10-40 6.54-7.11 8.99-17.9 10-30-7.91-1.55-10.05-5.35-10-10 3.94-15.91 3.44-32.68 0-50l-10-10c4.66-23.71 5.99-44.49-10-50-14.27-2.15-27.42 2.29-40 10z",
-  "m290 60l10-10c11.35-7.93 21.11-10.45 30-10 2.83-8.24 9.13-15.06 20-20 14.99 0.62 25.89 3.46 30 10-1.06 16.17 14.32 25.95 10 40 0.11 20.85-20.96 27.55-20 60-5.92 11.74-6 25.05 0 40 0 0 2.39 8.14-0.96 18.19-3.35 10.05 10.96 31.81 10.96 31.81 9.15 19.89-19.63 40.24-9.04 47.34 6.51 10.04 6.29 20.63 0.32 27.13-5.36 5.93-5.55 8.03-1.91 15.96 3.56 8.65 2.96 15.33-1.91 19.47-6.57 6.98 0.01 17.46 2.54 30.1-8.87 9.4-15.48 22.85-20 40v20l-10-30c0.77-12.05 12.66-17.45 7.98-24.68-12.33-9.42-9.75-18.5-3.83-22.34 2.59-2.7 8.28-9.51 3.19-17.55-7.16-13.56 5.06-22.82 2.66-35.43v-60l-3.94-21.06 3.94-18.94c-7.95-8.64-12.73-18.21-10-30 5.11-20-7.66-14.89-5.74-25.43 1.11-6.38 7.87-4.26 10.53-14.68-8.3-23.93 3.11-44.15-4.79-49.89-6.1-6.1-15.37-7.24-30 0-3.41-7.92-8.93-12.86-20-10z"
-];
 
 // ── DOM refs ─────────────────────────────────────────────────────────
 // NOTE: results/leaderboard is intentionally NOT in this map — it's a slide-up
@@ -928,6 +932,7 @@ const nameInput  = document.getElementById('nameInput');
 const boardList  = document.getElementById('boardList');
 const setBgmBtn  = document.getElementById('setBgmBtn');
 const setBarsInput = document.getElementById('setBarsInput');
+const setPlayVolInput = document.getElementById('setPlayVolInput');
 const setMiniBtn = document.getElementById('setMiniBtn');
 const setIdleBtn = document.getElementById('setIdleBtn');
 const setClearBtn= document.getElementById('setClearBtn');
@@ -982,9 +987,10 @@ let bucket = 0, score = 0, peakDb = 0, lastQuarterBeat = -1, lastStepCtx = 0, di
 // settings (persisted in localStorage)
 let musicMuted = false, micMuted = false;
 let bgmActionMode = 'silent';   // 'silent' | 'low' — bgm treatment during the action screen
-let musicDuck = 'normal';       // 'normal' | 'silent' | 'low' — live duck state
+let musicDuck = 'normal';       // 'normal' | 'silent' | 'low' | 'playback' — live duck state
 let miniDbOn = false;           // floating mini dB meter (off by default)
 let idleBoardOn = true;         // auto-summon leaderboard after 30s idle (on by default)
+let playbackMusicVol = PLAYBACK_VOL_DEFAULT;   // music level (0..1 of normal) during take playback
 const SETTINGS_KEY = 'scream-settings';
 // Coerce a stored/typed value into a valid whole number of action bars.
 function clampBars(v) {
@@ -992,8 +998,14 @@ function clampBars(v) {
   if (!Number.isFinite(n)) return ACTION_BARS_DEFAULT;
   return Math.min(ACTION_BARS_MAX, Math.max(ACTION_BARS_MIN, n));
 }
+// Coerce a stored/typed value into a valid 0..1 volume fraction.
+function clampVol(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return PLAYBACK_VOL_DEFAULT;
+  return Math.min(1, Math.max(0, n));
+}
 function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ musicMuted, micMuted, bgmActionMode, miniDbOn, idleBoardOn, actionBars })); } catch (_) {}
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ musicMuted, micMuted, bgmActionMode, miniDbOn, idleBoardOn, actionBars, playbackMusicVol })); } catch (_) {}
 }
 function loadSettings() {
   try {
@@ -1004,6 +1016,7 @@ function loadSettings() {
       miniDbOn = !!s.miniDbOn;
       idleBoardOn = (s.idleBoardOn !== false);   // default on
       actionBars = clampBars(s.actionBars);
+      if (s.playbackMusicVol !== undefined) playbackMusicVol = clampVol(s.playbackMusicVol);
     }
   } catch (_) {}
 }
@@ -1024,113 +1037,26 @@ let replayRaf = null, replayBtnEl = null;   // replay radial-progress animation
 let calFill = null, actFill = null, calFromModal = false;
 let rafId = null;
 
-// ── Fill-meter SVG builder (Monster logo clip + green gradient) ──────
-// Build a fill meter: the Monster silhouette as a clip over a dark base + a
-// rising green "ink" rect. When withDrips is true, a fixed pool of drip
-// ellipses rides the ink surface and a gooey SVG filter (blur + alpha
-// threshold) melts overlapping blobs into a metaball "ink drip" look. Returns
-// { rect, drips, _seed } (drips=[] when disabled). Pixel-aligned by construction
-// because everything lives in the same 480-space + clipPath + viewBox.
-function buildMeter(container, id, withDrips) {
-  const clipId = id + '-clip', gradId = id + '-grad', gooId = id + '-goo';
-  const goo = withDrips && GOO_OK;
-
-  const filterMarkup = goo ? (
-    '<filter id="' + gooId + '" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">' +
-      '<feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>' +
-      '<feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="goo"/>' +
-      '<feBlend in="SourceGraphic" in2="goo"/>' +
-    '</filter>'
-  ) : '';
-
-  let drips = '';
-  if (withDrips) {
-    for (let i = 0; i < 6; i++) {
-      drips += '<ellipse class="ink-drip" cx="0" cy="480" rx="0" ry="0" fill="url(#' + gradId + ')"/>';
-    }
-  }
-
+// ── Fill-meter builder (empty-can base + monster-can bottom-up reveal) ──
+// The claw/can artwork must NOT be modified, so the meter is just two stacked
+// PNGs: empty-can.png underneath, monster-can.png on top revealed from the
+// bottom up via clip-path. They share the same box (identical source size), so
+// the reveal is pixel-aligned. Returns { full } (the clipped monster-can img).
+function buildMeter(container) {
   container.innerHTML =
-    '<svg viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' +
-      '<defs>' +
-        '<clipPath id="' + clipId + '">' + MONSTER_PATHS.map(d => '<path d="' + d + '"/>').join('') + '</clipPath>' +
-        '<linearGradient id="' + gradId + '" x1="0" y1="1" x2="0" y2="0">' +
-          '<stop offset="0%" stop-color="#7bbf16"/>' +
-          '<stop offset="60%" stop-color="#a6e22e"/>' +
-          '<stop offset="100%" stop-color="#c4ff3d"/>' +
-        '</linearGradient>' +
-        filterMarkup +
-      '</defs>' +
-      '<g clip-path="url(#' + clipId + ')">' +
-        '<rect x="0" y="0" width="480" height="480" fill="#1c1f17"/>' +
-      '</g>' +
-      '<g clip-path="url(#' + clipId + ')"' + (goo ? ' filter="url(#' + gooId + ')"' : '') + '>' +
-        '<rect class="meter-fill" x="0" y="480" width="480" height="0" fill="url(#' + gradId + ')"/>' +
-        drips +
-      '</g>' +
-    '</svg>';
-
-  const svg = container.querySelector('svg');
-  return {
-    rect:  svg.querySelector('.meter-fill'),
-    drips: Array.from(svg.querySelectorAll('.ink-drip')),
-    _seed: Math.random() * 1000,
-  };
+    '<div class="can-meter">' +
+      '<img class="can-base" src="img/empty-can.png" alt="" draggable="false">' +
+      '<img class="can-fill" src="img/monster-can.png" alt="" draggable="false">' +
+    '</div>';
+  return { full: container.querySelector('.can-fill') };
 }
 
-// Position the rising body (single source of truth for the level) and lay drip
-// blobs along the surface. Drips only ever hang DOWN into the ink (ry capped to
-// h/2 so the blob bottom never passes the fill bottom), so they read as ink
-// sagging from the surface and never visually lower the level.
+// Reveal the monster-can from the bottom up: clip off the top (1-norm) of the
+// fill image so only the bottom `norm` fraction shows over the empty can.
 function setFill(meter, norm) {
+  if (!meter || !meter.full) return;
   const n = Math.max(0, Math.min(1, norm));
-  const h = n * 480;
-  const surfaceY = 480 - h;
-  meter.rect.setAttribute('y', surfaceY);
-  meter.rect.setAttribute('height', h);
-
-  if (!meter.drips || !meter.drips.length) return;
-  const t = (performance.now() / 1000) + meter._seed;
-  for (let i = 0; i < meter.drips.length; i++) {
-    const d = meter.drips[i];
-    if (h < 6) { d.setAttribute('rx', 0); d.setAttribute('ry', 0); continue; }
-    const baseX  = ((i + 0.5) / meter.drips.length) * 480;
-    const cx     = baseX + Math.sin(t * 0.7 + i * 1.7) * 14;
-    const phase  = (Math.sin(t * 1.3 + i * 2.1) + 1) * 0.5;   // 0..1
-    const drop   = 10 + phase * 26;
-    const ry     = Math.min(drop, h / 2);                     // stay attached to the surface
-    const rx     = 9 + Math.sin(t * 0.9 + i) * 3;
-    d.setAttribute('cx', cx.toFixed(1));
-    d.setAttribute('cy', (surfaceY + ry).toFixed(1));
-    d.setAttribute('rx', rx.toFixed(1));
-    d.setAttribute('ry', ry.toFixed(1));
-  }
-}
-
-// Fetch the monster silhouette from img/monster.svg and use its path geometry.
-// Falls back silently to the hardcoded paths on any failure. Skips rebuilding
-// the meters when the file is geometry-identical (avoids a mid-round SVG wipe).
-async function loadMonsterPaths() {
-  try {
-    const res = await fetch('img/monster.svg', { cache: 'force-cache' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const doc = new DOMParser().parseFromString(await res.text(), 'image/svg+xml');
-    if (doc.querySelector('parsererror')) throw new Error('parse error');
-    const ds = Array.from(doc.querySelectorAll('path')).map(p => p.getAttribute('d')).filter(Boolean);
-    if (ds.length && ds.join('|') !== MONSTER_PATHS.join('|')) {
-      MONSTER_PATHS = ds;
-      rebuildMeters();
-    }
-  } catch (e) {
-    console.warn('monster.svg load failed; using built-in paths:', e.message);
-  }
-}
-// Rebuild both meters from the current MONSTER_PATHS and reassign the refs
-// (old elements + drip nodes are detached by innerHTML, so callers must use the
-// reassigned objects — setFill reads meter.rect/drips fresh each call).
-function rebuildMeters() {
-  calFill = buildMeter(calMeter, 'cal', false);
-  actFill = buildMeter(actionMeter, 'act', true);
+  meter.full.style.clipPath = 'inset(' + ((1 - n) * 100).toFixed(2) + '% 0 0 0)';
 }
 
 // ── Audio engine (Web Audio buffer loop, ported from audio.html) ─────
@@ -1227,27 +1153,35 @@ function playOneShot(buf, when) {
   s.start(when == null ? actx.currentTime : Math.max(actx.currentTime, when));
 }
 
+// Target music gain for the current duck state (before the mute check).
+//   normal → full · low → 70% muffled · playback → the playback-volume setting.
+function musicGainFor(duck) {
+  if (duck === 'low') return MUSIC_VOL * BGM_LOW_VOL;
+  if (duck === 'playback') return MUSIC_VOL * playbackMusicVol;
+  return MUSIC_VOL;
+}
 // Music volume + filter reflect the master mute AND the live action duck.
 function applyMusicGain() {
   if (!musicGain || !actx) return;
   const silent = musicMuted || musicDuck === 'silent';
-  const g = silent ? 0 : (musicDuck === 'low' ? MUSIC_VOL * BGM_LOW_VOL : MUSIC_VOL);
+  const g = silent ? 0 : musicGainFor(musicDuck);
   const freq = (musicDuck === 'low' && !musicMuted) ? BGM_LOW_FREQ : BGM_OPEN_FREQ;
   musicGain.gain.setTargetAtTime(g, actx.currentTime, 0.03);
   musicFilter.frequency.setTargetAtTime(freq, actx.currentTime, 0.03);
 }
 function setMusicDuck(state) { musicDuck = state; applyMusicGain(); }
-// Hard-set the music to plain normal NOW (cancel any in-flight gain/filter
-// automation), so the recording playback runs over normal bgm with no leftover
-// fade/low-pass automation copied into it.
-function setMusicNormalImmediate() {
-  musicDuck = 'normal';
+// Hard-set the music to a duck level NOW (cancel any in-flight gain/filter
+// automation), so entering/leaving the take playback has no leftover fade or
+// low-pass automation bleeding across the transition.
+function setMusicImmediate(duck) {
+  musicDuck = duck;
   if (!musicGain || !actx) return;
   const t = actx.currentTime;
+  const freq = (duck === 'low' && !musicMuted) ? BGM_LOW_FREQ : BGM_OPEN_FREQ;
   musicGain.gain.cancelScheduledValues(t);
-  musicGain.gain.setValueAtTime(musicMuted ? 0 : MUSIC_VOL, t);
+  musicGain.gain.setValueAtTime(musicMuted ? 0 : musicGainFor(duck), t);
   musicFilter.frequency.cancelScheduledValues(t);
-  musicFilter.frequency.setValueAtTime(BGM_OPEN_FREQ, t);
+  musicFilter.frequency.setValueAtTime(freq, t);
 }
 function setMusicMuted(v)  { musicMuted = v; applyMusicGain(); }
 function setMicMuted(v)    { micMuted = v; }
@@ -1329,20 +1263,30 @@ function buildTakeBuffer() {
 function ensureRecGain() {
   if (!recGain) { recGain = actx.createGain(); recGain.gain.value = 1.0; recGain.connect(actx.destination); }
 }
+let playbackId = 0;   // bumped on every (re)start/stop; guards the onended restore
 // Start a take at AudioContext time `when` (scheduled, so it lands on the beat).
 function playTakeAt(buffer, when) {
   stopPlayback();
   if (!buffer || !actx) return;
   ensureRecGain();
   if (actx.state === 'suspended') actx.resume();
+  const myId = ++playbackId;
   const s = actx.createBufferSource();
   s.buffer = buffer;
   s.connect(recGain);
+  s.onended = () => { if (myId === playbackId) onTakePlaybackEnded(); };
   s.start(Math.max(actx.currentTime, when || actx.currentTime));
   recSource = s;
 }
 function stopPlayback() {
+  playbackId++;   // invalidate the pending onended of whatever we're stopping
   if (recSource) { try { recSource.stop(); } catch (_) {} try { recSource.disconnect(); } catch (_) {} recSource = null; }
+}
+// The take finished playing on its OWN (not stopped/superseded — those fail the
+// id guard). Bring the bgm back up to full: 70% applies only while it plays.
+function onTakePlaybackEnded() {
+  recSource = null;
+  if (musicDuck === 'playback') setMusicDuck('normal');
 }
 // Leaderboard replay: jump the bgm to the take's drum-fill measure on the next
 // downbeat, fire the riser, then start the take on the following measure — the
@@ -1351,7 +1295,7 @@ function triggerReplay(rec, btn) {
   if (!playing || !rec || !rec.buffer || !actx) return;
   stopPlayback();
   cancelReplayProgress();
-  setMusicNormalImmediate();
+  setMusicImmediate('playback');   // bgm drops to the playback volume while the take plays
   const at = nextBoundary(actx.currentTime + 0.06);    // seamless swap on a downbeat
   swapToMeasure(rec.drumfill, at);                     // drum fill leads in
   playOneShot(buffers.riser, at);
@@ -1740,9 +1684,9 @@ function onStart() {
 }
 
 // On the 4th (final) action measure: rewind the bgm to the drum-fill measure,
-// fire the riser alongside it, and fade the bgm up to full volume over the
-// measure — so when the results appear the bgm is already at full and carries
-// forward (D → D+1 …) for the recording playback.
+// fire the riser alongside it, and fade the bgm up to the PLAYBACK volume over
+// the measure — so when the results appear the bgm is already at that level and
+// carries forward (D → D+1 …) for the recording playback (no dip when it starts).
 function doRewind() {
   if (rewindDone) return;
   rewindDone = true;
@@ -1752,12 +1696,14 @@ function doRewind() {
   if (!riserFired) { riserFired = true; playOneShot(buffers.riser, t); }  // riser alongside the last measure
   fadeMusicInOverMeasure(t, Math.max(0.05, actionEndTime - t));
 }
-// Ramp the bgm from its ducked level up to full over `dur` seconds from ctx
-// time `t`. Silent → 0%→100%; Low → 70%→100% with the low-pass opening too.
+// Ramp the bgm from its ducked level up to the playback volume over `dur`
+// seconds from ctx time `t`, opening the low-pass too. Silent → 0%→playback;
+// Low → 70%→playback. Leaves the duck in 'playback' so the level holds for the
+// take and mute-toggles during playback still resolve correctly.
 function fadeMusicInOverMeasure(t, dur) {
   if (!musicGain || !actx) return;
   const startG = musicMuted ? 0 : (bgmActionMode === 'low' ? MUSIC_VOL * BGM_LOW_VOL : 0);
-  const endG   = musicMuted ? 0 : MUSIC_VOL;
+  const endG   = musicMuted ? 0 : musicGainFor('playback');
   musicGain.gain.cancelScheduledValues(t);
   musicGain.gain.setValueAtTime(startG, t);
   musicGain.gain.linearRampToValueAtTime(endG, t + dur);
@@ -1765,7 +1711,7 @@ function fadeMusicInOverMeasure(t, dur) {
   musicFilter.frequency.cancelScheduledValues(t);
   musicFilter.frequency.setValueAtTime(startF, t);
   musicFilter.frequency.linearRampToValueAtTime(BGM_OPEN_FREQ, t + dur);
-  musicDuck = 'normal';   // logically full once the ramp completes
+  musicDuck = 'playback';   // holds at the playback volume once the ramp completes
 }
 
 function enterPrep() {
@@ -1805,14 +1751,16 @@ function enterAction() {
 function finishAction() {
   flow = 'results';
 
-  // The 4th-measure rewind put the bgm at the drum fill; from here it just plays
-  // NORMALLY (carries D → D+1 …). Hard-normalize so no fade/low-pass automation
-  // bleeds into the playback.
-  setMusicNormalImmediate();
-
   // Build the take (mono, peak-normalized to 0 dB) from the captured PCM.
   let take = null;
   if (!clickerMode) { stopRecordingCapture(); take = buildTakeBuffer(); lastTakeBuffer = take; }
+
+  // The 4th-measure rewind left the bgm at the drum fill, carrying forward
+  // (D → D+1 …). If a take will play, hold the bgm at the PLAYBACK volume — its
+  // onended restores full volume once the take ends, so 70% applies ONLY while
+  // it plays. With no take (tap fallback / empty capture), play normally at full
+  // volume. Hard-set now either way so no fade automation bleeds into playback.
+  setMusicImmediate(take ? 'playback' : 'normal');
 
   const unit = clickerMode ? ' TAPS' : ' PTS';
   finalScore.innerHTML = peakScore + '<small>' + unit + '</small>';
@@ -2045,6 +1993,7 @@ function updateSettingsUI() {
   setIdleBtn.textContent = 'Idle Leaderboard: ' + (idleBoardOn ? 'On' : 'Off');
   setIdleBtn.classList.toggle('off', !idleBoardOn);
   setBarsInput.value = actionBars;
+  setPlayVolInput.value = playbackMusicVol;
 }
 settingsBtn.addEventListener('click', () => { updateSettingsUI(); settingsOverlay.classList.add('show'); });
 setClose.addEventListener('click', () => settingsOverlay.classList.remove('show'));
@@ -2058,6 +2007,12 @@ setBarsInput.addEventListener('change', () => {
   actionBars = clampBars(setBarsInput.value);   // round + clamp to [1, 32]
   setBarsInput.value = actionBars;               // reflect the normalized value back
   saveSettings();
+});
+setPlayVolInput.addEventListener('change', () => {
+  playbackMusicVol = clampVol(setPlayVolInput.value);   // clamp to [0, 1]
+  setPlayVolInput.value = playbackMusicVol;             // reflect the normalized value back
+  saveSettings();
+  if (musicDuck === 'playback') applyMusicGain();       // live-apply if a take is playing
 });
 
 // ── Leaderboard (the results screen) slide ────────────────────────────
@@ -2077,6 +2032,7 @@ function openResults(mode) {
 function closeResults() {
   stopPlayback();
   cancelReplayProgress();
+  if (musicDuck === 'playback') setMusicDuck('normal');   // restore full bgm if we left mid-playback
   flow = 'idle';
   clearScraps();
   showScreen('title');
@@ -2160,9 +2116,8 @@ document.querySelector('#screen-title .title').innerHTML = UI_TEXT.title.replace
 startBtn.querySelector('.label').textContent = UI_TEXT.startButton;
 backBtn.querySelector('.label').textContent = UI_TEXT.backMenuButton;
 
-calFill = buildMeter(calMeter, 'cal', false);    // calibration meter: plain fill, no drips
-actFill = buildMeter(actionMeter, 'act', true);  // action meter: ink-drip bucket
-loadMonsterPaths();                              // async: swap to img/monster.svg geometry (fallback-safe)
+calFill = buildMeter(calMeter);    // calibration meter (empty-can → monster-can)
+actFill = buildMeter(actionMeter); // action meter (empty-can → monster-can)
 
 // dB tick labels: 0,10,…,130 (14 labels → 13 ten-dB segments). column-reverse
 // puts 0 at the bottom, 130 at the top.
